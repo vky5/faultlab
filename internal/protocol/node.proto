@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package protocol;
+
+option go_package = "faultlab/internal/protocol";
+
+service NodeService {
+  rpc Ping (PingRequest) returns (PingResponse);
+}
+
+message PingRequest {
+  string from = 1;
+}
+
+message PingResponse {
+  string message = 1;
+}
