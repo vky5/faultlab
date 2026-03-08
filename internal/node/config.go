@@ -6,13 +6,14 @@ import (
 	"strings"
 )
 
-// Details related to individual node and its peers
+// Details of the node that we ran
 type NodeConfig struct {
 	ID    string
 	Port  int
 	Peers []Peer
 }
 
+// storing peer list 
 type Peer struct {
 	ID   string
 	Host string
