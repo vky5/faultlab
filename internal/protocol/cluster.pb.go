@@ -21,29 +21,79 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type RegisterRequest struct {
+type RegisterStatus int32
+
+const (
+	RegisterStatus_UNKNOWN RegisterStatus = 0
+	RegisterStatus_SUCCESS RegisterStatus = 1
+	RegisterStatus_FAILED  RegisterStatus = 2
+)
+
+// Enum value maps for RegisterStatus.
+var (
+	RegisterStatus_name = map[int32]string{
+		0: "UNKNOWN",
+		1: "SUCCESS",
+		2: "FAILED",
+	}
+	RegisterStatus_value = map[string]int32{
+		"UNKNOWN": 0,
+		"SUCCESS": 1,
+		"FAILED":  2,
+	}
+)
+
+func (x RegisterStatus) Enum() *RegisterStatus {
+	p := new(RegisterStatus)
+	*p = x
+	return p
+}
+
+func (x RegisterStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (RegisterStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_internal_protocol_cluster_proto_enumTypes[0].Descriptor()
+}
+
+func (RegisterStatus) Type() protoreflect.EnumType {
+	return &file_internal_protocol_cluster_proto_enumTypes[0]
+}
+
+func (x RegisterStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use RegisterStatus.Descriptor instead.
+func (RegisterStatus) EnumDescriptor() ([]byte, []int) {
+	return file_internal_protocol_cluster_proto_rawDescGZIP(), []int{0}
+}
+
+type RegisterNodeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Port          uint32                 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
-	ClusterId     uint32                 `protobuf:"varint,3,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
+	ClusterId     string                 `protobuf:"bytes,1,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
+	NodeId        string                 `protobuf:"bytes,2,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	Address       string                 `protobuf:"bytes,3,opt,name=address,proto3" json:"address,omitempty"`
+	Port          int32                  `protobuf:"varint,4,opt,name=port,proto3" json:"port,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *RegisterRequest) Reset() {
-	*x = RegisterRequest{}
+func (x *RegisterNodeRequest) Reset() {
+	*x = RegisterNodeRequest{}
 	mi := &file_internal_protocol_cluster_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *RegisterRequest) String() string {
+func (x *RegisterNodeRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*RegisterRequest) ProtoMessage() {}
+func (*RegisterNodeRequest) ProtoMessage() {}
 
-func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
+func (x *RegisterNodeRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_internal_protocol_cluster_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -55,53 +105,61 @@ func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use RegisterRequest.ProtoReflect.Descriptor instead.
-func (*RegisterRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use RegisterNodeRequest.ProtoReflect.Descriptor instead.
+func (*RegisterNodeRequest) Descriptor() ([]byte, []int) {
 	return file_internal_protocol_cluster_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *RegisterRequest) GetId() string {
+func (x *RegisterNodeRequest) GetClusterId() string {
 	if x != nil {
-		return x.Id
+		return x.ClusterId
 	}
 	return ""
 }
 
-func (x *RegisterRequest) GetPort() uint32 {
+func (x *RegisterNodeRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *RegisterNodeRequest) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
+func (x *RegisterNodeRequest) GetPort() int32 {
 	if x != nil {
 		return x.Port
 	}
 	return 0
 }
 
-func (x *RegisterRequest) GetClusterId() uint32 {
-	if x != nil {
-		return x.ClusterId
-	}
-	return 0
-}
-
-type RegisterResponse struct {
+type RegisterNodeResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Peers         []*NodeInfo            `protobuf:"bytes,1,rep,name=peers,proto3" json:"peers,omitempty"`
+	Status        RegisterStatus         `protobuf:"varint,1,opt,name=status,proto3,enum=cluster.RegisterStatus" json:"status,omitempty"`
+	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *RegisterResponse) Reset() {
-	*x = RegisterResponse{}
+func (x *RegisterNodeResponse) Reset() {
+	*x = RegisterNodeResponse{}
 	mi := &file_internal_protocol_cluster_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *RegisterResponse) String() string {
+func (x *RegisterNodeResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*RegisterResponse) ProtoMessage() {}
+func (*RegisterNodeResponse) ProtoMessage() {}
 
-func (x *RegisterResponse) ProtoReflect() protoreflect.Message {
+func (x *RegisterNodeResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_internal_protocol_cluster_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -113,16 +171,23 @@ func (x *RegisterResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use RegisterResponse.ProtoReflect.Descriptor instead.
-func (*RegisterResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use RegisterNodeResponse.ProtoReflect.Descriptor instead.
+func (*RegisterNodeResponse) Descriptor() ([]byte, []int) {
 	return file_internal_protocol_cluster_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *RegisterResponse) GetPeers() []*NodeInfo {
+func (x *RegisterNodeResponse) GetStatus() RegisterStatus {
 	if x != nil {
-		return x.Peers
+		return x.Status
 	}
-	return nil
+	return RegisterStatus_UNKNOWN
+}
+
+func (x *RegisterNodeResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
 }
 
 type HeartbeatRequest struct {
@@ -365,14 +430,16 @@ var File_internal_protocol_cluster_proto protoreflect.FileDescriptor
 
 const file_internal_protocol_cluster_proto_rawDesc = "" +
 	"\n" +
-	"\x1finternal/protocol/cluster.proto\x12\acluster\"T\n" +
-	"\x0fRegisterRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
-	"\x04port\x18\x02 \x01(\rR\x04port\x12\x1d\n" +
+	"\x1finternal/protocol/cluster.proto\x12\acluster\"{\n" +
+	"\x13RegisterNodeRequest\x12\x1d\n" +
 	"\n" +
-	"cluster_id\x18\x03 \x01(\rR\tclusterId\";\n" +
-	"\x10RegisterResponse\x12'\n" +
-	"\x05peers\x18\x01 \x03(\v2\x11.cluster.NodeInfoR\x05peers\"A\n" +
+	"cluster_id\x18\x01 \x01(\tR\tclusterId\x12\x17\n" +
+	"\anode_id\x18\x02 \x01(\tR\x06nodeId\x12\x18\n" +
+	"\aaddress\x18\x03 \x01(\tR\aaddress\x12\x12\n" +
+	"\x04port\x18\x04 \x01(\x05R\x04port\"a\n" +
+	"\x14RegisterNodeResponse\x12/\n" +
+	"\x06status\x18\x01 \x01(\x0e2\x17.cluster.RegisterStatusR\x06status\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"A\n" +
 	"\x10HeartbeatRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -385,9 +452,14 @@ const file_internal_protocol_cluster_proto_rawDesc = "" +
 	"\bNodeInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\x12\x12\n" +
-	"\x04port\x18\x03 \x01(\rR\x04port2\xd9\x01\n" +
-	"\x13OrchestratorService\x12C\n" +
-	"\fRegisterNode\x12\x18.cluster.RegisterRequest\x1a\x19.cluster.RegisterResponse\x12B\n" +
+	"\x04port\x18\x03 \x01(\rR\x04port*6\n" +
+	"\x0eRegisterStatus\x12\v\n" +
+	"\aUNKNOWN\x10\x00\x12\v\n" +
+	"\aSUCCESS\x10\x01\x12\n" +
+	"\n" +
+	"\x06FAILED\x10\x022\xe1\x01\n" +
+	"\x13OrchestratorService\x12K\n" +
+	"\fRegisterNode\x12\x1c.cluster.RegisterNodeRequest\x1a\x1d.cluster.RegisterNodeResponse\x12B\n" +
 	"\tHeartbeat\x12\x19.cluster.HeartbeatRequest\x1a\x1a.cluster.HeartbeatResponse\x129\n" +
 	"\bGetPeers\x12\x15.cluster.PeersRequest\x1a\x16.cluster.PeersResponseB\x1cZ\x1afaultlab/internal/protocolb\x06proto3"
 
@@ -403,25 +475,27 @@ func file_internal_protocol_cluster_proto_rawDescGZIP() []byte {
 	return file_internal_protocol_cluster_proto_rawDescData
 }
 
+var file_internal_protocol_cluster_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_internal_protocol_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_internal_protocol_cluster_proto_goTypes = []any{
-	(*RegisterRequest)(nil),   // 0: cluster.RegisterRequest
-	(*RegisterResponse)(nil),  // 1: cluster.RegisterResponse
-	(*HeartbeatRequest)(nil),  // 2: cluster.HeartbeatRequest
-	(*HeartbeatResponse)(nil), // 3: cluster.HeartbeatResponse
-	(*PeersRequest)(nil),      // 4: cluster.PeersRequest
-	(*PeersResponse)(nil),     // 5: cluster.PeersResponse
-	(*NodeInfo)(nil),          // 6: cluster.NodeInfo
+	(RegisterStatus)(0),          // 0: cluster.RegisterStatus
+	(*RegisterNodeRequest)(nil),  // 1: cluster.RegisterNodeRequest
+	(*RegisterNodeResponse)(nil), // 2: cluster.RegisterNodeResponse
+	(*HeartbeatRequest)(nil),     // 3: cluster.HeartbeatRequest
+	(*HeartbeatResponse)(nil),    // 4: cluster.HeartbeatResponse
+	(*PeersRequest)(nil),         // 5: cluster.PeersRequest
+	(*PeersResponse)(nil),        // 6: cluster.PeersResponse
+	(*NodeInfo)(nil),             // 7: cluster.NodeInfo
 }
 var file_internal_protocol_cluster_proto_depIdxs = []int32{
-	6, // 0: cluster.RegisterResponse.peers:type_name -> cluster.NodeInfo
-	6, // 1: cluster.PeersResponse.peers:type_name -> cluster.NodeInfo
-	0, // 2: cluster.OrchestratorService.RegisterNode:input_type -> cluster.RegisterRequest
-	2, // 3: cluster.OrchestratorService.Heartbeat:input_type -> cluster.HeartbeatRequest
-	4, // 4: cluster.OrchestratorService.GetPeers:input_type -> cluster.PeersRequest
-	1, // 5: cluster.OrchestratorService.RegisterNode:output_type -> cluster.RegisterResponse
-	3, // 6: cluster.OrchestratorService.Heartbeat:output_type -> cluster.HeartbeatResponse
-	5, // 7: cluster.OrchestratorService.GetPeers:output_type -> cluster.PeersResponse
+	0, // 0: cluster.RegisterNodeResponse.status:type_name -> cluster.RegisterStatus
+	7, // 1: cluster.PeersResponse.peers:type_name -> cluster.NodeInfo
+	1, // 2: cluster.OrchestratorService.RegisterNode:input_type -> cluster.RegisterNodeRequest
+	3, // 3: cluster.OrchestratorService.Heartbeat:input_type -> cluster.HeartbeatRequest
+	5, // 4: cluster.OrchestratorService.GetPeers:input_type -> cluster.PeersRequest
+	2, // 5: cluster.OrchestratorService.RegisterNode:output_type -> cluster.RegisterNodeResponse
+	4, // 6: cluster.OrchestratorService.Heartbeat:output_type -> cluster.HeartbeatResponse
+	6, // 7: cluster.OrchestratorService.GetPeers:output_type -> cluster.PeersResponse
 	5, // [5:8] is the sub-list for method output_type
 	2, // [2:5] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
@@ -439,13 +513,14 @@ func file_internal_protocol_cluster_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_protocol_cluster_proto_rawDesc), len(file_internal_protocol_cluster_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_internal_protocol_cluster_proto_goTypes,
 		DependencyIndexes: file_internal_protocol_cluster_proto_depIdxs,
+		EnumInfos:         file_internal_protocol_cluster_proto_enumTypes,
 		MessageInfos:      file_internal_protocol_cluster_proto_msgTypes,
 	}.Build()
 	File_internal_protocol_cluster_proto = out.File

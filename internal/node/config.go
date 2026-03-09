@@ -11,9 +11,15 @@ type NodeConfig struct {
 	ID    string
 	Port  int
 	Peers []Peer
+
+	ClusterID string
+	Host string
+
+	ControlPlaneHost string
+	ControlPlanePort int
 }
 
-// storing peer list 
+// storing peer list
 type Peer struct {
 	ID   string
 	Host string

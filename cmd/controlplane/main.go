@@ -41,6 +41,7 @@ func main() {
 		log.Fatalf("server failed: %v", err)
 	}
 }
+// TODO clean up this mess
 
 func itoa(v int) string {
 	return fmt.Sprintf("%d", v)

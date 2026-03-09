@@ -5,19 +5,29 @@ package cluster;
 option go_package = "faultlab/internal/protocol";
 
 service OrchestratorService {
-  rpc RegisterNode (RegisterRequest) returns (RegisterResponse); 
+  rpc RegisterNode (RegisterNodeRequest) returns (RegisterNodeResponse); 
   rpc Heartbeat (HeartbeatRequest) returns (HeartbeatResponse);
   rpc GetPeers (PeersRequest) returns (PeersResponse); // Get the info of peers in a cluster
 }
 
-message RegisterRequest {
-  string id = 1;
-  uint32 port = 2;
-  uint32 cluster_id = 3;
+message RegisterNodeRequest {
+  string cluster_id = 1;
+  string node_id = 2;
+  string address = 3;
+  int32 port = 4;
 }
 
-message RegisterResponse {
-  repeated NodeInfo peers = 1;
+
+message RegisterNodeResponse {
+  RegisterStatus status = 1;
+  string message = 2;
+}
+
+
+enum RegisterStatus {
+  UNKNOWN = 0;
+  SUCCESS = 1;
+  FAILED = 2;
 }
 
 message HeartbeatRequest {
@@ -28,6 +38,8 @@ message HeartbeatRequest {
 message HeartbeatResponse {
   bool ok = 1;
 }
+
+
 
 message PeersRequest {}
 
