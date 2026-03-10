@@ -6,26 +6,24 @@ import (
 	"time"
 
 	"github.com/vky5/faultlab/internal/cluster"
+	clustermanager "github.com/vky5/faultlab/internal/cluster/manager"
 	pb "github.com/vky5/faultlab/internal/protocol"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-
-
 type Server struct {
 	pb.UnimplementedOrchestratorServiceServer
-	manager *cluster.Manager
+	manager *clustermanager.Manager
+
+	nodeClient *NodeClient
 }
 
-
-func NewServer(m *cluster.Manager) *Server{
-	return &Server{manager: m}
+func NewServer(m *clustermanager.Manager, nc *NodeClient) *Server {
+	return &Server{manager: m, nodeClient: nc}
 }
 
-
-
-// registering a node to control plane 
+// registering a node to control plane
 func (s *Server) RegisterNode(
 	ctx context.Context,
 	req *pb.RegisterNodeRequest,
@@ -67,7 +65,6 @@ func (s *Server) RegisterNode(
 	}, nil
 }
 
-
 // getting the peers of a cluster (including node making request)
 func (s *Server) GetPeers(ctx context.Context, req *pb.PeersRequest) (*pb.PeersResponse, error) {
 	nodes, err := s.manager.GetNodes(req.ClusterId)
@@ -87,4 +84,41 @@ func (s *Server) GetPeers(ctx context.Context, req *pb.PeersRequest) (*pb.PeersR
 	return &pb.PeersResponse{
 		Peers: peers,
 	}, nil
+}
+
+
+func (s *Server) RemoveNode(
+	ctx context.Context,
+	req *pb.RemoveNodeRequest,
+) (*pb.RemoveNodeResponse, error) {
+
+	nodes, err := s.manager.GetNodes(req.ClusterId)
+	if err != nil {
+		return nil, err
+	}
+
+	var target *cluster.Node
+
+	for _, n := range nodes {
+		if n.ID == req.NodeId {
+			target = &n
+			break
+		}
+	}
+
+	if target == nil {
+		return nil, fmt.Errorf("node not found")
+	}
+
+	// stop node process
+	if err := s.nodeClient.StopNode(ctx, target.Address, target.Port); err != nil {
+		return nil, err
+	}
+
+	// remove from cluster state
+	if err := s.manager.RemoveNode(req.ClusterId, req.NodeId); err != nil {
+		return nil, err
+	}
+
+	return &pb.RemoveNodeResponse{}, nil
 }

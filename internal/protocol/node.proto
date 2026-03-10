@@ -6,6 +6,7 @@ option go_package = "faultlab/internal/protocol";
 
 service NodeService {
   rpc Ping (PingRequest) returns (PingResponse);
+  rpc StopNode (RemoveNodeRequest) returns (RemoveNodeResponse);
 }
 
 message PingRequest {
@@ -13,5 +14,14 @@ message PingRequest {
 }
 
 message PingResponse {
+  string message = 1;
+}
+
+message RemoveNodeRequest {
+  string cluster_id = 1;
+  string node_id = 2;
+}
+
+message RemoveNodeResponse {
   string message = 1;
 }

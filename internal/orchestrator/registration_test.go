@@ -5,7 +5,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/vky5/faultlab/internal/cluster"
+	clustermanager "github.com/vky5/faultlab/internal/cluster/manager"
 	pb "github.com/vky5/faultlab/internal/protocol"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -17,7 +17,7 @@ func TestRegisterNode(t *testing.T) {
 	lis := bufconn.Listen(1024 * 1024)
 	s := grpc.NewServer()
 
-	manager := cluster.NewManager()
+	manager := clustermanager.NewManager()
 	srv := NewServer(manager)
 	pb.RegisterOrchestratorServiceServer(s, srv)
 
@@ -30,7 +30,7 @@ func TestRegisterNode(t *testing.T) {
 
 	// 2. Setup Client
 	ctx := context.Background()
-	conn, err := grpc.NewClient("passthrough:///bufnet", 
+	conn, err := grpc.NewClient("passthrough:///bufnet",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return lis.Dial()
 		}),

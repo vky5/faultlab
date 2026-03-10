@@ -9,7 +9,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/vky5/faultlab/internal/cluster"
+	clustermanager "github.com/vky5/faultlab/internal/cluster/manager"
 	"github.com/vky5/faultlab/internal/orchestrator"
 	pb "github.com/vky5/faultlab/internal/protocol"
 )
@@ -19,7 +19,7 @@ func main() {
 	heartbeatTimeout := flag.Duration("heartbeat-timeout", 5*time.Second, "node heartbeat timeout")
 	flag.Parse()
 
-	manager := cluster.NewManager()
+	manager := clustermanager.NewManager()
 
 	// cleanup dead nodes
 	go manager.Cleanup(*heartbeatTimeout)
@@ -41,6 +41,7 @@ func main() {
 		log.Fatalf("server failed: %v", err)
 	}
 }
+
 // TODO clean up this mess
 
 func itoa(v int) string {
