@@ -288,6 +288,7 @@ func (x *HeartbeatResponse) GetOk() bool {
 
 type PeersRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	ClusterId     string                 `protobuf:"bytes,1,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -320,6 +321,13 @@ func (x *PeersRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use PeersRequest.ProtoReflect.Descriptor instead.
 func (*PeersRequest) Descriptor() ([]byte, []int) {
 	return file_internal_protocol_cluster_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *PeersRequest) GetClusterId() string {
+	if x != nil {
+		return x.ClusterId
+	}
+	return ""
 }
 
 type PeersResponse struct {
@@ -445,8 +453,10 @@ const file_internal_protocol_cluster_proto_rawDesc = "" +
 	"\n" +
 	"cluster_id\x18\x02 \x01(\tR\tclusterId\"#\n" +
 	"\x11HeartbeatResponse\x12\x0e\n" +
-	"\x02ok\x18\x01 \x01(\bR\x02ok\"\x0e\n" +
-	"\fPeersRequest\"8\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\"-\n" +
+	"\fPeersRequest\x12\x1d\n" +
+	"\n" +
+	"cluster_id\x18\x01 \x01(\tR\tclusterId\"8\n" +
 	"\rPeersResponse\x12'\n" +
 	"\x05peers\x18\x01 \x03(\v2\x11.cluster.NodeInfoR\x05peers\"H\n" +
 	"\bNodeInfo\x12\x0e\n" +

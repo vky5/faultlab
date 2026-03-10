@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/vky5/faultlab/internal/protocol"
 )
 
 // Details of the node that we ran
@@ -13,7 +15,7 @@ type NodeConfig struct {
 	Peers []Peer
 
 	ClusterID string
-	Host string
+	Host      string
 
 	ControlPlaneHost string
 	ControlPlanePort int
@@ -33,9 +35,13 @@ func NewConfig(id string, port int, peersCSV string) (NodeConfig, error) {
 	}
 
 	return NodeConfig{
-		ID:    id,
-		Port:  port,
-		Peers: peers,
+		ID:               id,
+		Port:             port,
+		Peers:            peers,
+		ClusterID:        "default",
+		Host:             "localhost",
+		ControlPlaneHost: "localhost",
+		ControlPlanePort: 9000,
 	}, nil
 }
 
@@ -86,4 +92,29 @@ func parsePeers(raw string) ([]Peer, error) {
 	}
 
 	return peers, nil
+}
+
+
+func (p *NodeConfig) SetPeers(peers []*protocol.NodeInfo) {
+	// Treating dynamic peer discovery as main source of truth than peer list
+	filtered := make([]Peer, 0, len(peers))
+
+	for _, peer := range peers {
+		if peer == nil || peer.Id == p.ID {
+			continue
+		}
+
+		host := strings.TrimSpace(peer.Address)
+		if host == "" {
+			host = "localhost"
+		}
+
+		filtered = append(filtered, Peer{
+			ID:   peer.Id,
+			Host: host,
+			Port: int(peer.Port),
+		})
+	}
+
+	p.Peers = filtered
 }

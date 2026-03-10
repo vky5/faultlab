@@ -1,8 +1,9 @@
 package orchestrator
 
+import (
 	"context"
 	"fmt"
-	"net"
+	"time"
 
 	"github.com/vky5/faultlab/internal/cluster"
 	pb "github.com/vky5/faultlab/internal/protocol"
@@ -24,7 +25,7 @@ func NewServer(m *cluster.Manager) *Server{
 
 
 
-// 
+// registering a node to control plane 
 func (s *Server) RegisterNode(
 	ctx context.Context,
 	req *pb.RegisterNodeRequest,
@@ -41,7 +42,7 @@ func (s *Server) RegisterNode(
 	defer conn.Close()
 
 	// Add timeout for verification
-	pCtx, cancel := context.WithTimeout(ctx, 300*time.Millisecond) // short timeout
+	pCtx, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
 	defer cancel()
 
 	client := pb.NewNodeServiceClient(conn)
@@ -66,11 +67,24 @@ func (s *Server) RegisterNode(
 	}, nil
 }
 
+
+// getting the peers of a cluster (including node making request)
 func (s *Server) GetPeers(ctx context.Context, req *pb.PeersRequest) (*pb.PeersResponse, error) {
-	// Note: Currently manager.RegisterNode returns peers, but we don't have a direct GetNodes for a cluster yet.
-	// Since we are single-cluster for now as per docs, we can just return all nodes from the first cluster or similar.
-	// However, manager.go shows it handles multiple clusters.
-	// Ideally GetPeers should take a cluster_id.
-	// For now, let's keep it simple as per existing proto.
-	return &pb.PeersResponse{}, nil
+	nodes, err := s.manager.GetNodes(req.ClusterId)
+	if err != nil {
+		return nil, err
+	}
+
+	peers := make([]*pb.NodeInfo, 0, len(nodes))
+	for _, n := range nodes {
+		peers = append(peers, &pb.NodeInfo{
+			Id:      n.ID,
+			Address: n.Address,
+			Port:    uint32(n.Port),
+		})
+	}
+
+	return &pb.PeersResponse{
+		Peers: peers,
+	}, nil
 }

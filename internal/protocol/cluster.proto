@@ -41,7 +41,9 @@ message HeartbeatResponse {
 
 
 
-message PeersRequest {}
+message PeersRequest {
+  string cluster_id = 1;
+}
 
 message PeersResponse {
   repeated NodeInfo peers = 1;

@@ -30,7 +30,7 @@ func TestRegisterNode(t *testing.T) {
 
 	// 2. Setup Client
 	ctx := context.Background()
-	conn, err := grpc.NewClient("bufnet", 
+	conn, err := grpc.NewClient("passthrough:///bufnet", 
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return lis.Dial()
 		}),
@@ -42,7 +42,17 @@ func TestRegisterNode(t *testing.T) {
 	defer conn.Close()
 	client := pb.NewOrchestratorServiceClient(conn)
 
-	// 3. Test Registration
+	// 3. Setup a mock node to handle verification Ping
+	nodeLis, err := net.Listen("tcp", "127.0.0.1:8001")
+	if err != nil {
+		t.Fatalf("Failed to listen for mock node: %v", err)
+	}
+	nodeSrv := grpc.NewServer()
+	pb.RegisterNodeServiceServer(nodeSrv, &mockNodeServer{})
+	go nodeSrv.Serve(nodeLis)
+	defer nodeSrv.Stop()
+
+	// 4. Test Registration
 	resp, err := client.RegisterNode(ctx, &pb.RegisterNodeRequest{
 		ClusterId: "test-cluster",
 		NodeId:    "test-node",
@@ -58,8 +68,16 @@ func TestRegisterNode(t *testing.T) {
 		t.Errorf("Expected 'node registered' message, got %v", resp.Message)
 	}
 
-	// 4. Verify in Manager (indirectly checking if it was actually added)
-	// Since RegisterNode returns peers, let's register a second node and check if the first one is in the peer list
+	// Setup second mock node
+	nodeLis2, err := net.Listen("tcp", "127.0.0.1:8002")
+	if err != nil {
+		t.Fatalf("Failed to listen for mock node 2: %v", err)
+	}
+	nodeSrv2 := grpc.NewServer()
+	pb.RegisterNodeServiceServer(nodeSrv2, &mockNodeServer{})
+	go nodeSrv2.Serve(nodeLis2)
+	defer nodeSrv2.Stop()
+
 	resp2, err := client.RegisterNode(ctx, &pb.RegisterNodeRequest{
 		ClusterId: "test-cluster",
 		NodeId:    "test-node-2",
@@ -76,11 +94,27 @@ func TestRegisterNode(t *testing.T) {
 	}
 
 	// 5. Test GetPeers for the second node
-	peersResp, err := client.GetPeers(ctx, &pb.PeersRequest{})
+	peersResp, err := client.GetPeers(ctx, &pb.PeersRequest{ClusterId: "test-cluster"})
 	if err != nil {
 		t.Fatalf("GetPeers failed: %v", err)
 	}
 
-	// Note: We expect to see 'test-node' in the peer list for 'test-node-2'
-	// However, GetPeers implementation needs to be checked in orchestrator/server.go
+	foundPeer := false
+	for _, p := range peersResp.Peers {
+		if p.Id == "test-node" {
+			foundPeer = true
+			break
+		}
+	}
+	if !foundPeer {
+		t.Errorf("Expected to find 'test-node' in peer list")
+	}
+}
+
+type mockNodeServer struct {
+	pb.UnimplementedNodeServiceServer
+}
+
+func (m *mockNodeServer) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResponse, error) {
+	return &pb.PingResponse{Message: "Pong"}, nil
 }
