@@ -5,13 +5,14 @@ import (
 	"log"
 
 	"github.com/vky5/faultlab/internal/node"
+	noderuntime "github.com/vky5/faultlab/internal/node/runtime"
 )
 
 func main() {
 
 	id := flag.String("id", "", "node id")
 	port := flag.Int("port", 0, "port")
-	peersFlag := flag.String("peers", "", "comma-separated peers: node1:7001,node2:7002 or node1@10.0.0.12:7002")
+	peersFlag := flag.String("peers", "", "0")
 	clusterID := flag.String("cluster-id", "default", "cluster id")
 	host := flag.String("host", "localhost", "node advertised host/address")
 	controlPlaneHost := flag.String("cp-host", "localhost", "control plane host")
@@ -28,8 +29,7 @@ func main() {
 	cfg.ControlPlaneHost = *controlPlaneHost
 	cfg.ControlPlanePort = *controlPlanePort
 
-	runtime := node.New(cfg)
+	runtime := noderuntime.New(cfg)
 
 	runtime.Start()
 }
-

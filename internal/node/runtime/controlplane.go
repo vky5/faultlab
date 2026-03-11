@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/vky5/faultlab/internal/protocol"
@@ -11,6 +12,12 @@ import (
 )
 
 func (r *Runtime) controlPlaneSyncLoop() {
+	fmt.Printf("[node:%s] control-plane sync loop started (cluster=%s, cp=%s:%d)\n",
+		r.config.ID, r.config.ClusterID, r.config.ControlPlaneHost, r.config.ControlPlanePort)
+	if err := r.registerNodeWithControlPlane(); err != nil {
+		fmt.Printf("Something went wrong : %d", err)
+	}
+
 	if err := r.syncWithControlPlane(); err != nil {
 		fmt.Printf("control-plane sync failed: %v\n", err) // register the node to the control plane
 	}
@@ -26,17 +33,14 @@ func (r *Runtime) controlPlaneSyncLoop() {
 }
 
 func (r *Runtime) syncWithControlPlane() error {
-	if err := r.registerNodeWithControlPlane(); err != nil {
-		return err
-	}
 	return r.getPeersFromControlplane()
 }
-
-
 
 // Registering the node to the server
 func (r *Runtime) registerNodeWithControlPlane() error {
 	addr := fmt.Sprintf("%s:%d", r.config.ControlPlaneHost, r.config.ControlPlanePort)
+	fmt.Printf("[node:%s] registering with control-plane=%s cluster=%s host=%s port=%d\n",
+		r.config.ID, addr, r.config.ClusterID, r.config.Host, r.config.Port)
 
 	conn, err := grpc.NewClient( // connecting to orchestrator
 		addr,
@@ -69,6 +73,7 @@ func (r *Runtime) registerNodeWithControlPlane() error {
 		return fmt.Errorf("registration rejected: %s", resp.Message)
 	}
 
+	fmt.Printf("[node:%s] registration successful\n", r.config.ID)
 	return nil
 }
 
@@ -96,7 +101,14 @@ func (r *Runtime) getPeersFromControlplane() error {
 
 	r.peersMu.Lock()
 	r.config.SetPeers(resp.Peers)
+	peers := make([]string, 0, len(r.config.Peers))
+	for _, p := range r.config.Peers {
+		peers = append(peers, fmt.Sprintf("%s@%s:%d", p.ID, p.Host, p.Port))
+	}
 	r.peersMu.Unlock()
+
+	fmt.Printf("[node:%s] peers updated: count=%d peers=[%s]\n",
+		r.config.ID, len(peers), strings.Join(peers, ", "))
 
 	return nil
 }

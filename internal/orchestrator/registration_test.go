@@ -18,7 +18,7 @@ func TestRegisterNode(t *testing.T) {
 	s := grpc.NewServer()
 
 	manager := clustermanager.NewManager()
-	srv := NewServer(manager)
+	srv := NewServer(manager, nil)
 	pb.RegisterOrchestratorServiceServer(s, srv)
 
 	go func() {

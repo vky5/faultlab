@@ -1,49 +1,84 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"time"
 
 	"google.golang.org/grpc"
 
 	clustermanager "github.com/vky5/faultlab/internal/cluster/manager"
+	controlplane "github.com/vky5/faultlab/internal/controlplane"
 	"github.com/vky5/faultlab/internal/orchestrator"
 	pb "github.com/vky5/faultlab/internal/protocol"
 )
 
 func main() {
-	port := flag.Int("port", 9000, "gRPC server port")
-	heartbeatTimeout := flag.Duration("heartbeat-timeout", 5*time.Second, "node heartbeat timeout")
+	// ---- flags ----
+	port := flag.Int("port", 9000, "control plane gRPC port")
+	heartbeatTimeout := flag.Duration(
+		"heartbeat-timeout",
+		5*time.Second,
+		"node heartbeat timeout",
+	)
 	flag.Parse()
 
+	// ---- core components ----
 	manager := clustermanager.NewManager()
+	nodeClient := orchestrator.NewNodeClient(3 * time.Second)
 
-	// cleanup dead nodes
 	go manager.Cleanup(*heartbeatTimeout)
 
-	server := orchestrator.NewServer(manager)
+	// ---- actor ----
+	actor := controlplane.NewActor(manager)
 
-	lis, err := net.Listen("tcp", ":"+itoa(*port))
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
+	go actor.Run()
 
+	// ---- gRPC server ----
 	grpcServer := grpc.NewServer()
 
-	pb.RegisterOrchestratorServiceServer(grpcServer, server)
+	orchestratorServer := orchestrator.NewServer(manager, nodeClient)
 
-	log.Printf("control plane running on port %d", *port)
+	pb.RegisterOrchestratorServiceServer(grpcServer, orchestratorServer)
 
-	if err := grpcServer.Serve(lis); err != nil {
-		log.Fatalf("server failed: %v", err)
+	addr := fmt.Sprintf(":%d", *port)
+
+	lis, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatalf("control plane listen failed: %v", err)
 	}
-}
 
-// TODO clean up this mess
+	log.Printf("control plane listening on %s", addr)
 
-func itoa(v int) string {
-	return fmt.Sprintf("%d", v)
+	go func() {
+		if err := grpcServer.Serve(lis); err != nil {
+			log.Fatalf("grpc server stopped: %v", err)
+		}
+	}()
+
+	// ---- CLI command loop ----
+	scanner := bufio.NewScanner(os.Stdin)
+
+	fmt.Println("control plane ready for commands")
+
+	for scanner.Scan() {
+
+		input := scanner.Text()
+
+		cmd, err := controlplane.Parse(input)
+		if err != nil {
+			fmt.Println("command error:", err)
+			continue
+		}
+
+		actor.Submit(cmd)
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Println("stdin error:", err)
+	}
 }
