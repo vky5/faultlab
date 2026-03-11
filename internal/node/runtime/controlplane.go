@@ -15,24 +15,28 @@ func (r *Runtime) controlPlaneSyncLoop() {
 	fmt.Printf("[node:%s] control-plane sync loop started (cluster=%s, cp=%s:%d)\n",
 		r.config.ID, r.config.ClusterID, r.config.ControlPlaneHost, r.config.ControlPlanePort)
 	if err := r.registerNodeWithControlPlane(); err != nil {
-		fmt.Printf("Something went wrong : %d", err)
+		fmt.Printf("[node:%s] startup registration failed: %v\n", r.config.ID, err)
+		return
 	}
 
 	if err := r.syncWithControlPlane(); err != nil {
-		fmt.Printf("control-plane sync failed: %v\n", err) // register the node to the control plane
+		fmt.Printf("[node:%s] initial sync failed: %v\n", r.config.ID, err)
 	}
 
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		if err := r.syncWithControlPlane(); err != nil { // get the peer list (this will overwrite the peer list)
-			fmt.Printf("control-plane sync failed: %v\n", err)
+		if err := r.syncWithControlPlane(); err != nil {
+			fmt.Printf("[node:%s] periodic sync failed: %v\n", r.config.ID, err)
 		}
 	}
 }
 
 func (r *Runtime) syncWithControlPlane() error {
+	if err := r.sendHeartbeatToControlPlane(); err != nil {
+		return err
+	}
 	return r.getPeersFromControlplane()
 }
 
@@ -110,5 +114,35 @@ func (r *Runtime) getPeersFromControlplane() error {
 	fmt.Printf("[node:%s] peers updated: count=%d peers=[%s]\n",
 		r.config.ID, len(peers), strings.Join(peers, ", "))
 
+	return nil
+}
+
+// sendHeartbeatToControlPlane updates LastSeen for this node in control-plane state.
+func (r *Runtime) sendHeartbeatToControlPlane() error {
+	addr := fmt.Sprintf("%s:%d", r.config.ControlPlaneHost, r.config.ControlPlanePort)
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	client := protocol.NewOrchestratorServiceClient(conn)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	resp, err := client.Heartbeat(ctx, &protocol.HeartbeatRequest{
+		Id:        r.config.ID,
+		ClusterId: r.config.ClusterID,
+	})
+	if err != nil {
+		return err
+	}
+	if !resp.Ok {
+		return fmt.Errorf("heartbeat rejected")
+	}
+
+	fmt.Printf("[node:%s] heartbeat sent\n", r.config.ID)
 	return nil
 }

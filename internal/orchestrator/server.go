@@ -141,3 +141,23 @@ func (s *Server) RemoveNode(
 
 	return &pb.RemoveNodeResponse{}, nil
 }
+
+// Heartbeat updates LastSeen for a node in a cluster.
+func (s *Server) Heartbeat(
+	ctx context.Context,
+	req *pb.HeartbeatRequest,
+) (*pb.HeartbeatResponse, error) {
+	_ = ctx
+
+	if req == nil {
+		return &pb.HeartbeatResponse{Ok: false}, fmt.Errorf("empty heartbeat request")
+	}
+
+	if err := s.manager.Heartbeat(req.ClusterId, req.Id); err != nil {
+		log.Printf("heartbeat failed: cluster=%s node=%s err=%v", req.ClusterId, req.Id, err)
+		return &pb.HeartbeatResponse{Ok: false}, err
+	}
+
+	log.Printf("heartbeat received: cluster=%s node=%s", req.ClusterId, req.Id)
+	return &pb.HeartbeatResponse{Ok: true}, nil
+}
