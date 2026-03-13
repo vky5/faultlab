@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	clustermanager "github.com/vky5/faultlab/internal/cluster/manager"
+	controlplanesvc "github.com/vky5/faultlab/internal/controlplane/service"
 	pb "github.com/vky5/faultlab/internal/protocol"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -18,7 +19,9 @@ func TestRegisterNode(t *testing.T) {
 	s := grpc.NewServer()
 
 	manager := clustermanager.NewManager()
-	srv := NewServer(manager, nil)
+	nodeClient := &mockNodeClient{}
+	service := controlplanesvc.NewClusterService(manager, nodeClient)
+	srv := NewServer(service)
 	pb.RegisterOrchestratorServiceServer(s, srv)
 
 	go func() {
@@ -109,6 +112,16 @@ func TestRegisterNode(t *testing.T) {
 	if !foundPeer {
 		t.Errorf("Expected to find 'test-node' in peer list")
 	}
+}
+
+type mockNodeClient struct{}
+
+func (m *mockNodeClient) StopNode(ctx context.Context, host string, port int) error {
+	return nil
+}
+
+func (m *mockNodeClient) Ping(ctx context.Context, host string, port int) error {
+	return nil
 }
 
 type mockNodeServer struct {

@@ -11,64 +11,65 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func (r *Runtime) controlPlaneSyncLoop() {
-	fmt.Printf("[node:%s] control-plane sync loop started (cluster=%s, cp=%s:%d)\n",
-		r.config.ID, r.config.ClusterID, r.config.ControlPlaneHost, r.config.ControlPlanePort)
-	if err := r.registerNodeWithControlPlane(); err != nil {
-		fmt.Printf("[node:%s] startup registration failed: %v\n", r.config.ID, err)
-		return
-	}
+// controlPlaneSyncLoop manages periodic sync with controlplane.
+// Lifecycle is controlled by runtime context.
+func (r *Runtime) controlPlaneSyncLoop(ctx context.Context) {
 
-	if err := r.syncWithControlPlane(); err != nil {
-		fmt.Printf("[node:%s] initial sync failed: %v\n", r.config.ID, err)
+	// first registration (blocking, before loop)
+	if err := r.registerNodeWithControlPlane(ctx); err != nil {
+		fmt.Printf("[node:%s] registration failed: %v\n", r.config.ID, err)
 	}
 
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		if err := r.syncWithControlPlane(); err != nil {
-			fmt.Printf("[node:%s] periodic sync failed: %v\n", r.config.ID, err)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			r.runControlplaneSyncCycle(ctx)
 		}
 	}
 }
 
-func (r *Runtime) syncWithControlPlane() error {
-	if err := r.sendHeartbeatToControlPlane(); err != nil {
-		return err
+// runControlplaneSyncCycle performs one full sync cycle.
+func (r *Runtime) runControlplaneSyncCycle(ctx context.Context) {
+	if err := r.sendHeartbeatToControlPlane(ctx); err != nil {
+		fmt.Printf("[node:%s] heartbeat failed: %v\n", r.config.ID, err)
+		return
 	}
-	return r.getPeersFromControlplane()
+
+	if err := r.getPeersFromControlplane(ctx); err != nil {
+		fmt.Printf("[node:%s] peer sync failed: %v\n", r.config.ID, err)
+	}
 }
 
-// Registering the node to the server
-func (r *Runtime) registerNodeWithControlPlane() error {
-	addr := fmt.Sprintf("%s:%d", r.config.ControlPlaneHost, r.config.ControlPlanePort)
-	fmt.Printf("[node:%s] registering with control-plane=%s cluster=%s host=%s port=%d\n",
-		r.config.ID, addr, r.config.ClusterID, r.config.Host, r.config.Port)
+// registerNodeWithControlPlane performs initial registration.
+func (r *Runtime) registerNodeWithControlPlane(parentCtx context.Context) error {
 
-	conn, err := grpc.NewClient( // connecting to orchestrator
+	addr := fmt.Sprintf("%s:%d", r.config.ControlPlaneHost, r.config.ControlPlanePort)
+
+	conn, err := grpc.NewClient(
 		addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
-
 	if err != nil {
 		return err
 	}
-
 	defer conn.Close()
 
-	client := protocol.NewOrchestratorServiceClient(conn) // getting client object of the NewOrchestratorService
+	client := protocol.NewOrchestratorServiceClient(conn)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	opCtx, cancel := context.WithTimeout(parentCtx, 3*time.Second)
 	defer cancel()
 
-	resp, err := client.RegisterNode(ctx, &protocol.RegisterNodeRequest{ // calling the registered func of the client
+	resp, err := client.RegisterNode(opCtx, &protocol.RegisterNodeRequest{
 		ClusterId: r.config.ClusterID,
 		NodeId:    r.config.ID,
 		Address:   r.config.Host,
 		Port:      int32(r.config.Port),
 	})
-
 	if err != nil {
 		return err
 	}
@@ -81,30 +82,32 @@ func (r *Runtime) registerNodeWithControlPlane() error {
 	return nil
 }
 
-// getting the peer list and upgrading it
-func (r *Runtime) getPeersFromControlplane() error {
+// getPeersFromControlplane fetches latest peer topology.
+func (r *Runtime) getPeersFromControlplane(parentCtx context.Context) error {
+
 	addr := fmt.Sprintf("%s:%d", r.config.ControlPlaneHost, r.config.ControlPlanePort)
 
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return err
 	}
-
 	defer conn.Close()
 
 	client := protocol.NewOrchestratorServiceClient(conn)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	opCtx, cancel := context.WithTimeout(parentCtx, 3*time.Second)
 	defer cancel()
 
-	resp, err := client.GetPeers(ctx, &protocol.PeersRequest{ClusterId: r.config.ClusterID})
-
+	resp, err := client.GetPeers(opCtx, &protocol.PeersRequest{
+		ClusterId: r.config.ClusterID,
+	})
 	if err != nil {
 		return err
 	}
 
 	r.peersMu.Lock()
 	r.config.SetPeers(resp.Peers)
+
 	peers := make([]string, 0, len(r.config.Peers))
 	for _, p := range r.config.Peers {
 		peers = append(peers, fmt.Sprintf("%s@%s:%d", p.ID, p.Host, p.Port))
@@ -117,8 +120,9 @@ func (r *Runtime) getPeersFromControlplane() error {
 	return nil
 }
 
-// sendHeartbeatToControlPlane updates LastSeen for this node in control-plane state.
-func (r *Runtime) sendHeartbeatToControlPlane() error {
+// sendHeartbeatToControlPlane reports liveness.
+func (r *Runtime) sendHeartbeatToControlPlane(parentCtx context.Context) error {
+
 	addr := fmt.Sprintf("%s:%d", r.config.ControlPlaneHost, r.config.ControlPlanePort)
 
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -129,10 +133,10 @@ func (r *Runtime) sendHeartbeatToControlPlane() error {
 
 	client := protocol.NewOrchestratorServiceClient(conn)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	opCtx, cancel := context.WithTimeout(parentCtx, 3*time.Second)
 	defer cancel()
 
-	resp, err := client.Heartbeat(ctx, &protocol.HeartbeatRequest{
+	resp, err := client.Heartbeat(opCtx, &protocol.HeartbeatRequest{
 		Id:        r.config.ID,
 		ClusterId: r.config.ClusterID,
 	})
