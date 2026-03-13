@@ -1,4 +1,4 @@
-package orchestrator
+package rpc
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vky5/faultlab/internal/cluster"
 	clustermanager "github.com/vky5/faultlab/internal/cluster/manager"
 	pb "github.com/vky5/faultlab/internal/protocol"
 	"google.golang.org/grpc"
@@ -18,12 +17,10 @@ import (
 type Server struct {
 	pb.UnimplementedOrchestratorServiceServer
 	manager *clustermanager.Manager
-
-	nodeClient *NodeClient
 }
 
-func NewServer(m *clustermanager.Manager, nc *NodeClient) *Server {
-	return &Server{manager: m, nodeClient: nc}
+func NewServer(m *clustermanager.Manager) *Server {
+	return &Server{manager: m}
 }
 
 // registering a node to control plane
@@ -101,45 +98,6 @@ func (s *Server) GetPeers(ctx context.Context, req *pb.PeersRequest) (*pb.PeersR
 	return &pb.PeersResponse{
 		Peers: peers,
 	}, nil
-}
-
-func (s *Server) RemoveNode(
-	ctx context.Context,
-	req *pb.RemoveNodeRequest,
-) (*pb.RemoveNodeResponse, error) {
-	log.Printf("remove-node request: cluster=%s node=%s", req.ClusterId, req.NodeId)
-
-	nodes, err := s.manager.GetNodes(req.ClusterId)
-	if err != nil {
-		return nil, err
-	}
-
-	var target *cluster.Node
-
-	for _, n := range nodes {
-		if n.ID == req.NodeId {
-			target = &n
-			break
-		}
-	}
-
-	if target == nil {
-		return nil, fmt.Errorf("node not found")
-	}
-
-	// stop node process
-	if err := s.nodeClient.StopNode(ctx, target.Address, target.Port); err != nil {
-		return nil, err
-	}
-	log.Printf("stop-node sent: node=%s addr=%s:%d", req.NodeId, target.Address, target.Port)
-
-	// remove from cluster state
-	if err := s.manager.RemoveNode(req.ClusterId, req.NodeId); err != nil {
-		return nil, err
-	}
-	log.Printf("node removed from cluster state: cluster=%s node=%s", req.ClusterId, req.NodeId)
-
-	return &pb.RemoveNodeResponse{}, nil
 }
 
 // Heartbeat updates LastSeen for a node in a cluster.

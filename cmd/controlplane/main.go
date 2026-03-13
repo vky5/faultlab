@@ -13,7 +13,7 @@ import (
 
 	clustermanager "github.com/vky5/faultlab/internal/cluster/manager"
 	controlplane "github.com/vky5/faultlab/internal/controlplane"
-	"github.com/vky5/faultlab/internal/orchestrator"
+	controlplanerpc "github.com/vky5/faultlab/internal/controlplane/rpc"
 	pb "github.com/vky5/faultlab/internal/protocol"
 )
 
@@ -29,7 +29,6 @@ func main() {
 
 	// ---- core components ----
 	manager := clustermanager.NewManager()
-	nodeClient := orchestrator.NewNodeClient(3 * time.Second)
 
 	go manager.Cleanup(*heartbeatTimeout)
 
@@ -41,7 +40,7 @@ func main() {
 	// ---- gRPC server ----
 	grpcServer := grpc.NewServer()
 
-	orchestratorServer := orchestrator.NewServer(manager, nodeClient)
+	orchestratorServer := controlplanerpc.NewServer(manager)
 
 	pb.RegisterOrchestratorServiceServer(grpcServer, orchestratorServer)
 

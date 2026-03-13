@@ -79,3 +79,20 @@ func (m *Manager) GetNodes(clusterID string) ([]cluster.Node, error) {
 	}
 	return nodes, nil
 }
+
+func (m *Manager) GetNode(clusterID, nodeID string) (*cluster.Node, error) {
+    m.mu.RLock()
+    defer m.mu.RUnlock()
+
+    c, ok := m.clusters[clusterID]
+    if !ok {
+        return nil, fmt.Errorf("cluster not found")
+    }
+
+    n, ok := c.Nodes[nodeID]
+    if !ok {
+        return nil, fmt.Errorf("node not found")
+    }
+
+    return n, nil
+}

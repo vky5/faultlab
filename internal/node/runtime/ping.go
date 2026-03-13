@@ -1,3 +1,5 @@
+// This code snippet is defining a set of functions related to managing a peer-to-peer network
+// communication system. Here's a breakdown of what each part of the code is doing:
 package runtime
 
 import (
