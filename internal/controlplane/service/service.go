@@ -2,8 +2,11 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"time"
 
+	"github.com/vky5/faultlab/internal/cluster"
 	clustermanager "github.com/vky5/faultlab/internal/cluster/manager"
 )
 
@@ -58,4 +61,41 @@ func (s *Service) RemoveNode(
 	log.Printf("node removed from cluster state: cluster=%s node=%s", clusterID, nodeID)
 
 	return nil
+}
+
+
+// registering node
+func (s *Service) RegisterNode(
+	ctx context.Context,
+	clusterID, nodeID, host string,
+	port int, 
+)error {
+	// verification policy (reachability + ping)
+	verifyCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	/*
+	so we are effectively saying min (ctx, verifyCtx)
+
+	- parent 10s + child 2s → child cancels at 2s
+	- parent 1s + child 2s → child cancels at 1s
+    
+	*/
+
+	if err := s.NodeClient.Ping(verifyCtx, host, port); err != nil {
+		return fmt.Errorf("node verification failed: %w", err)
+	}
+
+	// update cluster state
+	s.cluster.RegisterNode(clusterID, nodeID, host, port)
+	
+	return nil
+}
+
+func (s *Service) GetPeers(clusterID string) ([]cluster.Node, error) {
+    return s.cluster.GetNodes(clusterID)
+}
+
+func (s *Service) Heartbeat(clusterID, nodeID string) error {
+    return s.cluster.Heartbeat(clusterID, nodeID)
 }

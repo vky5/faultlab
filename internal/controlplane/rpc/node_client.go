@@ -24,8 +24,7 @@ func NewNodeClient(timeout time.Duration) *NodeClient {
 	}
 }
 
-
-// grpc call to stop node grpc server 
+// grpc call to stop node grpc server
 func (c *NodeClient) StopNode(ctx context.Context, host string, port int) error {
 	addr := fmt.Sprintf("%s:%d", host, port)
 
@@ -49,4 +48,24 @@ func (c *NodeClient) StopNode(ctx context.Context, host string, port int) error 
 	}
 
 	return nil
+}
+
+func (n *NodeClient) Ping(ctx context.Context, host string, port int) error {
+	addr := fmt.Sprintf("%s:%d", host, port)
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return err
+	}
+
+	defer conn.Close()
+
+	rpcCtx, cancel := context.WithTimeout(ctx, n.timeout)
+	defer cancel()
+
+	client := protocol.NewNodeServiceClient(conn)
+
+	_, err = client.Ping(rpcCtx, &protocol.PingRequest{From: "Control Plane"})
+
+	return err
 }

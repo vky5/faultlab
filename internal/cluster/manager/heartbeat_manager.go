@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Heartbeat updates liveness for a node.
+// Heartbeat updates lastseen for a node.
 func (m *Manager) Heartbeat(clusterID, nodeID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
