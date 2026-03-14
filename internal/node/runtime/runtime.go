@@ -11,25 +11,21 @@ import (
 	"google.golang.org/grpc"
 )
 
-type cpsession interface {
-	RegisterNodeWithControlPlane(ctx context.Context)
-}
-
 type Runtime struct {
 	config  node.NodeConfig
 	server  *grpc.Server
-	peersMu sync.RWMutex    // needed so we don't update peers and ping the peer list at the same time
-	ctx     context.Context // lifecycle context (think of it like main power supply for all node processes and other ctx as switches)
+	peersMu sync.RWMutex
+	ctx     context.Context
 	cancel  context.CancelFunc
 	cp      CPSession
+	ns    NodeSession
 }
 
-// runtime <- server
-
-func New(cfg node.NodeConfig, cp CPSession) Runtime {
+func New(cfg node.NodeConfig, cp CPSession, ns NodeSession) Runtime {
 	return Runtime{
 		config: cfg,
 		cp:     cp,
+		ns:   ns,
 	}
 }
 

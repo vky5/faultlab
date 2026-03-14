@@ -39,7 +39,13 @@ func main() {
 		cfg.Port,
 	)
 
-	runtime := noderuntime.New(cfg, cpSession)
+	nodeSession := session.NewNodeSession(
+		cfg.Host,
+		cfg.ID,
+		cfg.Port,
+	)
+
+	runtime := noderuntime.New(cfg, cpSession, nodeSession)
 
 	runtime.Start()
 }
