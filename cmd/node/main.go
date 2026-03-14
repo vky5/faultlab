@@ -6,6 +6,7 @@ import (
 
 	"github.com/vky5/faultlab/internal/node"
 	noderuntime "github.com/vky5/faultlab/internal/node/runtime"
+	"github.com/vky5/faultlab/internal/node/session"
 )
 
 func main() {
@@ -29,7 +30,16 @@ func main() {
 	cfg.ControlPlaneHost = *controlPlaneHost
 	cfg.ControlPlanePort = *controlPlanePort
 
-	runtime := noderuntime.New(cfg)
+	cpSession := session.NewControlplaneSession(
+		cfg.ID,
+		cfg.ClusterID,
+		cfg.ControlPlaneHost,
+		cfg.ControlPlanePort,
+		cfg.Host,
+		cfg.Port,
+	)
+
+	runtime := noderuntime.New(cfg, cpSession)
 
 	runtime.Start()
 }

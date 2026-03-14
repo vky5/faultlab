@@ -11,17 +11,25 @@ import (
 	"google.golang.org/grpc"
 )
 
+type cpsession interface {
+	RegisterNodeWithControlPlane(ctx context.Context)
+}
+
 type Runtime struct {
 	config  node.NodeConfig
 	server  *grpc.Server
 	peersMu sync.RWMutex    // needed so we don't update peers and ping the peer list at the same time
 	ctx     context.Context // lifecycle context (think of it like main power supply for all node processes and other ctx as switches)
 	cancel  context.CancelFunc
+	cp      CPSession
 }
 
-func New(cfg node.NodeConfig) Runtime {
+// runtime <- server
+
+func New(cfg node.NodeConfig, cp CPSession) Runtime {
 	return Runtime{
 		config: cfg,
+		cp:     cp,
 	}
 }
 
@@ -68,8 +76,7 @@ func (r *Runtime) Stop() {
 	}
 }
 
-
 /*
 we are using service at controlplane because we are taking the decioion from cli like starting new node or stuff like that
-but here the node is like and independent process that needs to be executed. 
+but here the node is like and independent process that needs to be executed.
 */

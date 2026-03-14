@@ -10,7 +10,7 @@ import (
 
 // Details of the node that we ran
 type NodeConfig struct {
-	ID    string
+	ID    string // hode id
 	Port  int
 	Peers []Peer
 
