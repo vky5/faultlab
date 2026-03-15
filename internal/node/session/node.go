@@ -50,12 +50,14 @@ type nodeSession struct {
 }
 
 func (ns *nodeSession) Start(ctx context.Context) {
+	fmt.Printf("[node:%s] starting probe loop (interval=%v)\n", ns.nodeID, ns.probeInterval)
 	ticker := time.NewTicker(ns.probeInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
+			fmt.Printf("[node:%s] stopping probe loop\n", ns.nodeID)
 			ns.closeAllConnections()
 			return
 		case <-ticker.C:
@@ -71,6 +73,8 @@ func (ns *nodeSession) probeOnce(ctx context.Context) {
 		peers = append(peers, ps)
 	}
 	ns.mu.Unlock()
+
+	fmt.Printf("[node:%s] probing %d peers...\n", ns.nodeID, len(peers))
 	for _, ps := range peers {
 		// deterministic dialing: only owner initiates probes
 		if !shouldDial(ns.nodeID, ps.id) {
@@ -81,15 +85,23 @@ func (ns *nodeSession) probeOnce(ctx context.Context) {
 }
 
 func (ns *nodeSession) probePeer(ctx context.Context, ps *peerState) {
+	// deterministic dialing: only owner initiates probes
+	if !shouldDial(ns.nodeID, ps.id) {
+		return
+	}
+
 	// lazy connect
 	if ps.conn == nil {
 		c, err := ns.dial(ctx, ps.host, ps.port)
 		if err != nil {
+			fmt.Printf("[node:%s] probe %s: dial failed: %v\n", ns.nodeID, ps.id, err)
 			ns.updateFailure(ps)
 			return
 		}
 		ps.conn = c
-		_ = ns.handshake(ctx, ps) // best-effort
+		if err := ns.handshake(ctx, ps); err != nil {
+			fmt.Printf("[node:%s] probe %s: handshake failed: %v\n", ns.nodeID, ps.id, err)
+		}
 	}
 
 	opCtx, cancel := context.WithTimeout(ctx, time.Second)
@@ -97,10 +109,12 @@ func (ns *nodeSession) probePeer(ctx context.Context, ps *peerState) {
 
 	_, err := ps.conn.client.Ping(opCtx, &protocol.PingRequest{From: ns.nodeID})
 	if err != nil {
+		fmt.Printf("[node:%s] probe %s (%s:%d): ping failed: %v\n", ns.nodeID, ps.id, ps.host, ps.port, err)
 		ns.updateFailure(ps)
 		return
 	}
 
+	fmt.Printf("[node:%s] probe %s (%s:%d): alive\n", ns.nodeID, ps.id, ps.host, ps.port)
 	ns.updateSuccess(ps)
 }
 

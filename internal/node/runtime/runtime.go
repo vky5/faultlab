@@ -18,14 +18,14 @@ type Runtime struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	cp      CPSession
-	ns    NodeSession
+	ns      NodeSession
 }
 
 func New(cfg node.NodeConfig, cp CPSession, ns NodeSession) Runtime {
 	return Runtime{
 		config: cfg,
 		cp:     cp,
-		ns:   ns,
+		ns:     ns,
 	}
 }
 
@@ -37,8 +37,10 @@ func (r *Runtime) Start() {
 
 	r.server = node.NewServer(r)
 
+	// Start session's internal probe loop (sends actual pings, updates health state)
+	go r.ns.Start(r.ctx)
+
 	go r.runGRPCServer(r.ctx)
-	go r.startPingLoop(r.ctx)
 	go r.controlPlaneSyncLoop(r.ctx)
 
 	<-r.ctx.Done()

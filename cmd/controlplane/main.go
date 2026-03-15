@@ -1,15 +1,18 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"time"
 
 	"google.golang.org/grpc"
 
 	clustermanager "github.com/vky5/faultlab/internal/cluster/manager"
+	"github.com/vky5/faultlab/internal/controlplane"
 	controlplanerpc "github.com/vky5/faultlab/internal/controlplane/rpc"
 	controlplanesvc "github.com/vky5/faultlab/internal/controlplane/service"
 	pb "github.com/vky5/faultlab/internal/protocol"
@@ -34,6 +37,10 @@ func main() {
 	// ---- service layer ----
 	service := controlplanesvc.NewClusterService(manager, nodeClient)
 
+	// ---- actor (command processor) ----
+	actor := controlplane.NewActor(manager)
+	go actor.Run()
+
 	// ---- gRPC server ----
 	grpcServer := grpc.NewServer()
 	orchestratorServer := controlplanerpc.NewServer(service)
@@ -56,19 +63,16 @@ func main() {
 	}()
 
 	// ---- CLI command loop ----
-	// TODO: integrate with service layer when actor is ready
-	// scanner := bufio.NewScanner(os.Stdin)
-	// fmt.Println("control plane ready for commands")
-	// for scanner.Scan() {
-	// 	input := scanner.Text()
-	// 	cmd, err := controlplane.Parse(input)
-	// 	if err != nil {
-	// 		fmt.Println("command error:", err)
-	// 		continue
-	// 	}
-	// 	actor.Submit(cmd)
-	// }
-
-	log.Println("control plane running (CLI disabled)")
-	select {} // block forever
+	scanner := bufio.NewScanner(os.Stdin)
+	fmt.Println("control plane ready for commands")
+	fmt.Println("Commands: new-cluster <id>, add-node <cluster> <node> <host> <port>, list-nodes <cluster>, remove-node <cluster> <node>")
+	for scanner.Scan() {
+		input := scanner.Text()
+		cmd, err := controlplane.Parse(input)
+		if err != nil {
+			fmt.Println("command error:", err)
+			continue
+		}
+		actor.Submit(cmd)
+	}
 }

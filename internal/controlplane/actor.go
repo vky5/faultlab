@@ -8,23 +8,22 @@ import (
 
 type Actor struct {
 	manager *clustermanager.Manager
-	cmdCh chan Command
+	cmdCh   chan Command
 }
 
 func NewActor(manager *clustermanager.Manager) *Actor {
 	return &Actor{
 		manager: manager,
-		cmdCh: make(chan Command, 32),
+		cmdCh:   make(chan Command, 32),
 	}
 }
-
 
 // taking input of commands in command channel
 func (a *Actor) Submit(cmd Command) {
 	a.cmdCh <- cmd
 }
 
-// single executionre point for the incoming commands 
+// single executionre point for the incoming commands
 func (a *Actor) Run() {
 
 	for cmd := range a.cmdCh {
@@ -32,7 +31,12 @@ func (a *Actor) Run() {
 		switch cmd.Type {
 
 		case CmdCreateCluster:
-			fmt.Println("create cluster:", cmd.ClusterID)
+			err := a.manager.CreateCluster(cmd.ClusterID)
+			if err != nil {
+				fmt.Println("create cluster error:", err)
+				continue
+			}
+			fmt.Println("cluster created:", cmd.ClusterID)
 
 		case CmdRemoveNode:
 			err := a.manager.RemoveNode(cmd.ClusterID, cmd.NodeID)
