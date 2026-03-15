@@ -30,6 +30,7 @@ type CPSession interface {
 
 // NodeSession manages peer interactions and connection lifecycle
 type NodeSession interface {
-	Ping(ctx context.Context, peerID, peerHost string, peerPort int) PeerHealth
 	OnPeersUpdated(peers []PeerInfo)
+	Start(ctx context.Context)          // start internal loops
+	GetPeerHealth(id string) PeerHealth // runtime reads state
 }

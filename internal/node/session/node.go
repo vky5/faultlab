@@ -25,7 +25,8 @@ type peerState struct { // storing details related to peer state
 	conn *grpcConn
 
 	lastSuccess time.Time
-	suspect     bool
+	failCount   int
+	health      noderuntime.PeerHealth
 }
 
 /*
@@ -42,30 +43,68 @@ type nodeSession struct {
 	nodePort int // current node addr and port
 	nodeAddr string
 
-	mu    sync.Mutex // introduced here so that we can lock when updating the struct
+	mu    sync.RWMutex // introduced here so that we can lock when updating the struct
 	peers map[string]*peerState
+
+	probeInterval time.Duration
 }
 
-func (ns *nodeSession) getOrCreatePeer(
-	ctx context.Context,
-	peerID, host string,
-	port int,
-) (*peerState, error) {
-	if !shouldDial(ns.nodeID, peerID) {
-		ps, ok := ns.peers[peerID]
-		if !ok || ps.conn == nil {
-			return nil, fmt.Errorf("peer %s is not dialable and no existing connection found", peerID)
-		}
-		return ps, nil
-	}
+func (ns *nodeSession) Start(ctx context.Context) {
+	ticker := time.NewTicker(ns.probeInterval)
+	defer ticker.Stop()
 
+	for {
+		select {
+		case <-ctx.Done():
+			ns.closeAllConnections()
+			return
+		case <-ticker.C:
+			ns.probeOnce(ctx) // send ping to all peers and updatre peer state accordingly
+		}
+	}
+}
+
+func (ns *nodeSession) probeOnce(ctx context.Context) {
 	ns.mu.Lock()
-	if ps, ok := ns.peers[peerID]; ok {
-		ns.mu.Unlock()
-		return ps, nil
+	peers := make([]*peerState, 0, len(ns.peers))
+	for _, ps := range ns.peers {
+		peers = append(peers, ps)
 	}
 	ns.mu.Unlock()
+	for _, ps := range peers {
+		// deterministic dialing: only owner initiates probes
+		if !shouldDial(ns.nodeID, ps.id) {
+			continue
+		}
+		ns.probePeer(ctx, ps)
+	}
+}
 
+func (ns *nodeSession) probePeer(ctx context.Context, ps *peerState) {
+	// lazy connect
+	if ps.conn == nil {
+		c, err := ns.dial(ctx, ps.host, ps.port)
+		if err != nil {
+			ns.updateFailure(ps)
+			return
+		}
+		ps.conn = c
+		_ = ns.handshake(ctx, ps) // best-effort
+	}
+
+	opCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+
+	_, err := ps.conn.client.Ping(opCtx, &protocol.PingRequest{From: ns.nodeID})
+	if err != nil {
+		ns.updateFailure(ps)
+		return
+	}
+
+	ns.updateSuccess(ps)
+}
+
+func (ns *nodeSession) dial(ctx context.Context, host string, port int) (*grpcConn, error) {
 	target := fmt.Sprintf("%s:%d", host, port)
 
 	conn, err := grpc.NewClient(
@@ -76,19 +115,82 @@ func (ns *nodeSession) getOrCreatePeer(
 		return nil, err
 	}
 
-	ps := &peerState{
-		id:   peerID,
-		host: host,
-		port: port,
-		conn: &grpcConn{
-			conn:   conn,
-			client: protocol.NewNodeServiceClient(conn),
-		},
+	return &grpcConn{
+		conn:   conn,
+		client: protocol.NewNodeServiceClient(conn),
+	}, nil
+}
+
+func (ns *nodeSession) closeAllConnections() {
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+
+	for _, ps := range ns.peers {
+		if ps.conn != nil && ps.conn.conn != nil {
+			_ = ps.conn.conn.Close()
+		}
+	}
+}
+
+func (ns *nodeSession) updateSuccess(ps *peerState) {
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+
+	ps.lastSuccess = time.Now()
+	ps.failCount = 0
+	ps.health = noderuntime.PeerAlive
+}
+
+func (ns *nodeSession) updateFailure(ps *peerState) {
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+
+	ps.failCount++
+	if ps.failCount == 1 {
+		ps.health = noderuntime.PeerSuspect
+	} else if ps.failCount >= 2 {
+		ps.health = noderuntime.PeerDead
+	}
+}
+
+func (ns *nodeSession) getOrCreatePeer(
+	ctx context.Context,
+	peerID, host string,
+	port int,
+) (*peerState, error) {
+	if !shouldDial(ns.nodeID, peerID) {
+		ns.mu.RLock()
+		ps, ok := ns.peers[peerID]
+		ns.mu.RUnlock()
+		if !ok || ps.conn == nil {
+			return nil, fmt.Errorf("peer %s is not dialable and no existing connection found", peerID)
+		}
+		return ps, nil
 	}
 
-	// perform handshake once
+	ns.mu.RLock()
+	ps, ok := ns.peers[peerID]
+	ns.mu.RUnlock()
+
+	if ok {
+		return ps, nil
+	}
+
+	c, err := ns.dial(ctx, host, port)
+	if err != nil {
+		return nil, err
+	}
+
+	ps = &peerState{
+		id:     peerID,
+		host:   host,
+		port:   port,
+		conn:   c,
+		health: noderuntime.PeerSuspect,
+	}
+
 	if err := ns.handshake(ctx, ps); err != nil {
-		_ = conn.Close()
+		_ = c.conn.Close()
 		return nil, err
 	}
 
@@ -145,9 +247,10 @@ func (ns *nodeSession) OnPeersUpdated(peers []noderuntime.PeerInfo) {
 	for id, info := range newSet {
 		if _, ok := ns.peers[id]; !ok {
 			ns.peers[id] = &peerState{
-				id:   info.ID,
-				host: info.Host,
-				port: info.Port,
+				id:     info.ID,
+				host:   info.Host,
+				port:   info.Port,
+				health: noderuntime.PeerSuspect,
 			}
 		}
 	}
@@ -168,49 +271,14 @@ func (ns *nodeSession) OnPeersUpdated(peers []noderuntime.PeerInfo) {
 	}
 }
 
-func (ns *nodeSession) Ping(
-	ctx context.Context,
-	peerID, host string,
-	port int,
-) noderuntime.PeerHealth {
+func (ns *nodeSession) GetPeerHealth(id string) noderuntime.PeerHealth {
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
 
-	ps, err := ns.getOrCreatePeer(ctx, peerID, host, port)
-	if err != nil {
-		return noderuntime.PeerDead
+	if ps, ok := ns.peers[id]; ok {
+		return ps.health
 	}
-
-	opCtx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
-
-	_, err = ps.conn.client.Ping(opCtx, &protocol.PingRequest{
-		From: ns.nodeID,
-	})
-	if err != nil {
-		ns.markSuspect(peerID)
-		return noderuntime.PeerSuspect
-	}
-
-	ns.markAlive(peerID)
-	return noderuntime.PeerAlive
-}
-
-func (ns *nodeSession) markAlive(peerID string) {
-	ns.mu.Lock()
-	defer ns.mu.Unlock()
-
-	if ps, ok := ns.peers[peerID]; ok {
-		ps.lastSuccess = time.Now()
-		ps.suspect = false
-	}
-}
-
-func (ns *nodeSession) markSuspect(peerID string) {
-	ns.mu.Lock()
-	defer ns.mu.Unlock()
-
-	if ps, ok := ns.peers[peerID]; ok {
-		ps.suspect = true
-	}
+	return noderuntime.PeerDead // unknown peer treated as dead
 }
 
 func shouldDial(self, peer string) bool {
@@ -220,9 +288,10 @@ func shouldDial(self, peer string) bool {
 // NewNodeSession creates a new node session for peer interactions
 func NewNodeSession(nodeAddr string, nodeID string, nodePort int) noderuntime.NodeSession {
 	return &nodeSession{
-		nodeID:   nodeID,
-		nodePort: nodePort,
-		nodeAddr: nodeAddr,
-		peers:    make(map[string]*peerState),
+		nodeID:        nodeID,
+		nodePort:      nodePort,
+		nodeAddr:      nodeAddr,
+		peers:         make(map[string]*peerState),
+		probeInterval: 2 * time.Second,
 	}
 }

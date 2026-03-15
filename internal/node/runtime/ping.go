@@ -43,7 +43,7 @@ func (r *Runtime) snapshotPeers() []node.Peer {
 
 // pingPeer performs a single ping operation with bounded timeout.
 func (r *Runtime) pingPeer(ctx context.Context, peer node.Peer) {
-	health := r.ns.Ping(ctx, peer.ID, peer.Host, peer.Port)
+	health := r.ns.GetPeerHealth(peer.ID)
 
 	// Session returns peer health status
 	// Runtime can react based on health state
