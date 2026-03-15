@@ -43,7 +43,13 @@ func (r *Runtime) snapshotPeers() []node.Peer {
 
 // pingPeer performs a single ping operation with bounded timeout.
 func (r *Runtime) pingPeer(ctx context.Context, peer node.Peer) {
-	if err := r.ns.Ping(ctx, peer.ID, peer.Host, peer.Port); err != nil {
-		fmt.Printf("ping %s (%s:%d) failed: %v\n", peer.ID, peer.Host, peer.Port, err)
+	health := r.ns.Ping(ctx, peer.ID, peer.Host, peer.Port)
+
+	// Session returns peer health status
+	// Runtime can react based on health state
+	if health == PeerSuspect {
+		fmt.Printf("peer %s (%s:%d) is suspect\n", peer.ID, peer.Host, peer.Port)
+	} else if health == PeerDead {
+		fmt.Printf("peer %s (%s:%d) is dead\n", peer.ID, peer.Host, peer.Port)
 	}
 }

@@ -6,17 +6,10 @@ import (
 	"sync"
 	"time"
 
+	noderuntime "github.com/vky5/faultlab/internal/node/runtime"
 	"github.com/vky5/faultlab/internal/protocol"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-)
-
-type PeerHealth int
-
-const (
-	PeerAlive PeerHealth = iota
-	PeerSuspect
-	PeerDead
 )
 
 type grpcConn struct { // storing details related to gRPC connection
@@ -59,7 +52,11 @@ func (ns *nodeSession) getOrCreatePeer(
 	port int,
 ) (*peerState, error) {
 	if !shouldDial(ns.nodeID, peerID) {
-		return nil, fmt.Errorf("not allowed to dial peer: %s", peerID)
+		ps, ok := ns.peers[peerID]
+		if !ok || ps.conn == nil {
+			return nil, fmt.Errorf("peer %s is not dialable and no existing connection found", peerID)
+		}
+		return ps, nil
 	}
 
 	ns.mu.Lock()
@@ -115,15 +112,71 @@ func (ns *nodeSession) handshake(ctx context.Context, ps *peerState) error {
 	return err
 }
 
+// OnPeersUpdated updates the peer topology based on changes from runtime.
+// Runtime passes the authoritative peer list, session decides connection lifecycle.
+// This inverts control: runtime owns topology, session owns peer interactions.
+/*
+stale connections closed
+new peers prepared
+session internal state stays consistent
+runtime stops micromanaging networking
+*/
+func (ns *nodeSession) OnPeersUpdated(peers []noderuntime.PeerInfo) {
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+
+	// Build new topology map
+	newSet := make(map[string]noderuntime.PeerInfo, len(peers))
+	for _, p := range peers {
+		newSet[p.ID] = p
+	}
+
+	// 1 Remove peers not present anymore
+	for id, ps := range ns.peers {
+		if _, ok := newSet[id]; !ok {
+			if ps.conn != nil && ps.conn.conn != nil {
+				_ = ps.conn.conn.Close()
+			}
+			delete(ns.peers, id)
+		}
+	}
+
+	// 2️ Add new peers (lazy state only)
+	for id, info := range newSet {
+		if _, ok := ns.peers[id]; !ok {
+			ns.peers[id] = &peerState{
+				id:   info.ID,
+				host: info.Host,
+				port: info.Port,
+			}
+		}
+	}
+
+	// 3️ Update metadata if peer changed address
+	for id, info := range newSet {
+		if ps, ok := ns.peers[id]; ok {
+			if ps.host != info.Host || ps.port != info.Port {
+				// peer endpoint changed → reset connection
+				if ps.conn != nil && ps.conn.conn != nil {
+					_ = ps.conn.conn.Close()
+				}
+				ps.host = info.Host
+				ps.port = info.Port
+				ps.conn = nil
+			}
+		}
+	}
+}
+
 func (ns *nodeSession) Ping(
 	ctx context.Context,
 	peerID, host string,
 	port int,
-) PeerHealth {
+) noderuntime.PeerHealth {
 
 	ps, err := ns.getOrCreatePeer(ctx, peerID, host, port)
 	if err != nil {
-		return PeerDead
+		return noderuntime.PeerDead
 	}
 
 	opCtx, cancel := context.WithTimeout(ctx, time.Second)
@@ -134,11 +187,11 @@ func (ns *nodeSession) Ping(
 	})
 	if err != nil {
 		ns.markSuspect(peerID)
-		return PeerSuspect
+		return noderuntime.PeerSuspect
 	}
 
 	ns.markAlive(peerID)
-	return PeerAlive
+	return noderuntime.PeerAlive
 }
 
 func (ns *nodeSession) markAlive(peerID string) {
@@ -162,4 +215,14 @@ func (ns *nodeSession) markSuspect(peerID string) {
 
 func shouldDial(self, peer string) bool {
 	return self < peer
+}
+
+// NewNodeSession creates a new node session for peer interactions
+func NewNodeSession(nodeAddr string, nodeID string, nodePort int) noderuntime.NodeSession {
+	return &nodeSession{
+		nodeID:   nodeID,
+		nodePort: nodePort,
+		nodeAddr: nodeAddr,
+		peers:    make(map[string]*peerState),
+	}
 }

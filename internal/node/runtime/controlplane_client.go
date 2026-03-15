@@ -65,6 +65,18 @@ func (r *Runtime) getPeersFromControlplane(parentCtx context.Context) error {
 	fmt.Printf("[node:%s] peers updated: count=%d peers=[%s]\n",
 		r.config.ID, len(peersStr), strings.Join(peersStr, ", "))
 
+	// Runtime passes peer topology to session
+	// Session owns connection lifecycle: decides what to add/remove
+	sessionPeers := make([]PeerInfo, 0, len(r.config.Peers))
+	for _, p := range r.config.Peers {
+		sessionPeers = append(sessionPeers, PeerInfo{
+			ID:   p.ID,
+			Host: p.Host,
+			Port: p.Port,
+		})
+	}
+	r.ns.OnPeersUpdated(sessionPeers)
+
 	return nil
 }
 
