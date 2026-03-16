@@ -6,7 +6,7 @@ import (
 )
 
 // creating an empty cluster
-func (m *Manager) CreateCluster(clusterID string) error {
+func (m *Manager) CreateCluster(clusterID string, protocol string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -15,8 +15,9 @@ func (m *Manager) CreateCluster(clusterID string) error {
 	}
 
 	m.clusters[clusterID] = &cluster.Cluster{
-		ID:    clusterID,
-		Nodes: make(map[string]*cluster.Node),
+		ID:       clusterID,
+		Protocol: protocol,
+		Nodes:    make(map[string]*cluster.Node),
 	}
 	return nil
 }
@@ -50,4 +51,16 @@ func (m *Manager) GetClusters() []string {
 		clusterIDs = append(clusterIDs, id)
 	}
 	return clusterIDs
+}
+
+// getting a specific cluster
+func (m *Manager) GetCluster(clusterID string) (*cluster.Cluster, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	c, ok := m.clusters[clusterID]
+	if !ok {
+		return nil, fmt.Errorf("cluster not found")
+	}
+	return c, nil
 }

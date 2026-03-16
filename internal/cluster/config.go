@@ -12,6 +12,7 @@ type Node struct {
 }
 
 type Cluster struct {
-	ID    string
-	Nodes map[string]*Node
+	ID       string
+	Protocol string
+	Nodes    map[string]*Node
 }

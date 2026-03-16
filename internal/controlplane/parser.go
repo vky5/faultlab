@@ -17,9 +17,14 @@ func Parse(input string) (Command, error) {
 	switch parts[0] {
 
 	case "new-cluster":
+		protocol := "gossip"
+		if len(parts) >= 3 {
+			protocol = parts[2]
+		}
 		return Command{
 			Type:      CmdCreateCluster,
 			ClusterID: parts[1],
+			Protocol:  protocol,
 		}, nil
 
 	case "remove-node":

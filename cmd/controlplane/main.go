@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 
 	clustermanager "github.com/vky5/faultlab/internal/cluster/manager"
 	"github.com/vky5/faultlab/internal/controlplane"
+	"github.com/vky5/faultlab/internal/controlplane/rest"
 	controlplanerpc "github.com/vky5/faultlab/internal/controlplane/rpc"
 	controlplanesvc "github.com/vky5/faultlab/internal/controlplane/service"
 	pb "github.com/vky5/faultlab/internal/protocol"
@@ -21,6 +23,7 @@ import (
 func main() {
 	// ---- flags ----
 	port := flag.Int("port", 9000, "control plane gRPC port")
+	httpPort := flag.Int("http-port", 8080, "control plane HTTP port")
 	heartbeatTimeout := flag.Duration(
 		"heartbeat-timeout",
 		5*time.Second,
@@ -38,7 +41,7 @@ func main() {
 	service := controlplanesvc.NewClusterService(manager, nodeClient)
 
 	// ---- actor (command processor) ----
-	actor := controlplane.NewActor(manager)
+	actor := controlplane.NewActor(manager, service)
 	go actor.Run()
 
 	// ---- gRPC server ----
@@ -62,10 +65,25 @@ func main() {
 		}
 	}()
 
+	// ---- HTTP server ----
+	restServer := rest.NewServer(actor)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/clusters", restServer.HandleClusters)
+	mux.HandleFunc("/api/clusters/", restServer.HandleNodes) // handle nested paths
+
+	httpAddr := fmt.Sprintf(":%d", *httpPort)
+	log.Printf("control plane HTTP listening on %s", httpAddr)
+
+	go func() {
+		if err := http.ListenAndServe(httpAddr, mux); err != nil {
+			log.Fatalf("http server stopped: %v", err)
+		}
+	}()
+
 	// ---- CLI command loop ----
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Println("control plane ready for commands")
-	fmt.Println("Commands: new-cluster <id>, add-node <cluster> <node> <host> <port>, list-nodes <cluster>, remove-node <cluster> <node>")
+	fmt.Println("Commands: new-cluster <id> <protocol>, add-node <cluster> <node> <host> <port>, list-nodes <cluster>, remove-node <cluster> <node>")
 	for scanner.Scan() {
 		input := scanner.Text()
 		cmd, err := controlplane.Parse(input)
