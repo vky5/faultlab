@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 
+	proto "github.com/vky5/faultlab/internal/node/protocol"
 	"github.com/vky5/faultlab/internal/protocol"
 )
 
@@ -33,4 +34,5 @@ type NodeSession interface {
 	OnPeersUpdated(peers []PeerInfo)
 	Start(ctx context.Context)          // start internal loops
 	GetPeerHealth(id string) PeerHealth // runtime reads state
+	Send(ctx context.Context, env proto.Envelope) error // sending message
 }

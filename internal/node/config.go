@@ -94,7 +94,6 @@ func parsePeers(raw string) ([]Peer, error) {
 	return peers, nil
 }
 
-
 func (p *NodeConfig) SetPeers(peers []*protocol.NodeInfo) {
 	// Treating dynamic peer discovery as main source of truth than peer list
 	filtered := make([]Peer, 0, len(peers))

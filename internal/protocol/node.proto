@@ -8,17 +8,31 @@ service NodeService {
   rpc Ping (PingRequest) returns (PingResponse);
   rpc StopNode (RemoveNodeRequest) returns (RemoveNodeResponse);
   rpc Handshake(HandshakeRequest) returns (HandshakeResponse);
+
+  rpc SendEnvelope (EnvelopeRequest) returns (EnvelopeAck); // generic protocol for sending message
+}
+
+message EnvelopeRequest {
+  string from     = 1;
+  string to       = 2;
+  string protocol = 3; // which protocol emitted this (raft / gossip / baseline etc)
+  bytes  payload  = 4; // Protocol specific serialized payload
+}
+
+message EnvelopeAck {
+  bool   success = 1;
+  string message = 2;
 }
 
 message HandshakeRequest {
   string cluster_id = 1;
-  string node_id = 2;
-  string addr = 3;
-  int32 port = 4;
+  string node_id    = 2;
+  string addr       = 3;
+  int32  port       = 4;
 }
 
 message HandshakeResponse {
-  bool success = 1;
+  bool   success = 1;
   string message = 2;
 }
 

@@ -54,3 +54,6 @@ func (n *NodeRPCServer) StopNode(ctx context.Context, _ *protocol.RemoveNodeRequ
 	n.nc.Stop()
 	return &protocol.RemoveNodeResponse{}, nil
 }
+
+
+// func (n *NodeRPCServer) Send(ctx context.Context)|=

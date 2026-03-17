@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	proto "github.com/vky5/faultlab/internal/node/protocol"
 	noderuntime "github.com/vky5/faultlab/internal/node/runtime"
 	"github.com/vky5/faultlab/internal/protocol"
 	"google.golang.org/grpc"
@@ -47,6 +48,49 @@ type nodeSession struct {
 	peers map[string]*peerState
 
 	probeInterval time.Duration
+}
+
+// sending message to other node
+func (ns *nodeSession) Send(ctx context.Context, env proto.Envelope) error {
+	ns.mu.Lock()
+	ps, ok := ns.peers[env.To]
+	ns.mu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("peer not found: %s", env.To)
+	}
+
+	// lazy connect
+	if ps.conn == nil {
+		c, err := ns.dial(ctx, ps.host, ps.port)
+		if err != nil {
+			return err
+		}
+
+		ps.conn = c
+
+		if err := ns.handshake(ctx, ps); err != nil {
+			return err
+		}
+	}
+
+	opCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	_, err := ps.conn.client.SendEnvelope(opCtx, &protocol.EnvelopeRequest{
+		From:     env.From,
+		To:       env.To,
+		Protocol: string(env.Protocol),
+		Payload:  env.Payload,
+	})
+
+	if err != nil {
+		ns.updateFailure(ps)
+		return err
+	}
+
+	ns.updateSuccess(ps)
+	return nil
 }
 
 func (ns *nodeSession) Start(ctx context.Context) {
