@@ -216,45 +216,40 @@ func (ns *nodeSession) getOrCreatePeer(
 	peerID, host string,
 	port int,
 ) (*peerState, error) {
-	if !shouldDial(ns.nodeID, peerID) {
-		ns.mu.RLock()
-		ps, ok := ns.peers[peerID]
-		ns.mu.RUnlock()
-		if !ok || ps.conn == nil {
-			return nil, fmt.Errorf("peer %s is not dialable and no existing connection found", peerID)
-		}
-		return ps, nil
-	}
-
-	ns.mu.RLock()
-	ps, ok := ns.peers[peerID]
-	ns.mu.RUnlock()
-
-	if ok {
-		return ps, nil
-	}
-
-	c, err := ns.dial(ctx, host, port)
-	if err != nil {
-		return nil, err
-	}
-
-	ps = &peerState{
-		id:     peerID,
-		host:   host,
-		port:   port,
-		conn:   c,
-		health: noderuntime.PeerSuspect,
-	}
-
-	if err := ns.handshake(ctx, ps); err != nil {
-		_ = c.conn.Close()
-		return nil, err
-	}
 
 	ns.mu.Lock()
-	ns.peers[peerID] = ps
+	ps, ok := ns.peers[peerID]
+	if !ok {
+		ps = &peerState{
+			id:     peerID,
+			host:   host,
+			port:   port,
+			health: noderuntime.PeerSuspect,
+		}
+		ns.peers[peerID] = ps
+	}
 	ns.mu.Unlock()
+
+	// If not dial owner → just return metadata
+	if !shouldDial(ns.nodeID, peerID) {
+		return ps, nil
+	}
+
+	// Dial owner ensures connection
+	if ps.conn == nil {
+		c, err := ns.dial(ctx, ps.host, ps.port)
+		if err != nil {
+			return nil, err
+		}
+
+		ps.conn = c
+
+		if err := ns.handshake(ctx, ps); err != nil {
+			_ = c.conn.Close()
+			ps.conn = nil
+			return nil, err
+		}
+	}
 
 	return ps, nil
 }
