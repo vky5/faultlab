@@ -6,9 +6,12 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/vky5/faultlab/internal/node"
 	proto "github.com/vky5/faultlab/internal/node/protocol"
+	_ "github.com/vky5/faultlab/internal/node/protocol/baseline" // to register baseline
+	"github.com/vky5/faultlab/internal/protocol"
 	"google.golang.org/grpc"
 )
 
@@ -25,12 +28,11 @@ type Runtime struct {
 	driver *ProtocolDriver
 }
 
-func New(cfg node.NodeConfig, cp CPSession, ns NodeSession, driver *ProtocolDriver) Runtime {
+func New(cfg node.NodeConfig, cp CPSession, ns NodeSession) Runtime {
 	return Runtime{
 		config: cfg,
 		cp:     cp,
 		ns:     ns,
-		driver: driver,
 	}
 }
 
@@ -40,16 +42,31 @@ func (r *Runtime) Start() {
 
 	r.ctx, r.cancel = context.WithCancel(context.Background())
 
-	r.server = node.NewServer(r)
+	r.server = node.NewServer(r) // implementing gRPC serverrs
 
-	p, err := proto.Load("baseline") // TODO either make it as input or make it dynamic and the state is tied to x because under the hood x is BaseLineProtocol struct.
+	log.Printf("[runtime] Loading baseline protocol...")
+	p, err := proto.Load("baseline")
 	if err != nil {
 		log.Fatalf("protocol load failed: %v", err)
 	}
+	r.proto = p
+	log.Printf("[runtime] Protocol loaded successfully: %T", p)
 
-	r.driver.Start(r.config.ID, p) // configuring default state of the protocol
+	driver := NewProtocolDriver(
+		1*time.Second, // time duration for each tick()
+		func(ctx context.Context, env proto.Envelope) {
+			r.ns.Send(ctx, env)
+		},
+	)
 
-	go r.driver.Run(p)
+	r.driver = driver
+
+	if err := r.proto.Start(r.config.ID); err != nil {
+		log.Fatalf("failed to initialize the initial state of the protocol")
+	}
+	log.Printf("[runtime] Protocol started for node %s", r.config.ID)
+
+	go r.driver.Run(r.ctx, p)
 
 	// Start session's internal probe loop (sends actual pings, updates health state)
 	go r.ns.Start(r.ctx)
@@ -73,7 +90,7 @@ func (r *Runtime) runGRPCServer(ctx context.Context) {
 	}()
 
 	if err := r.server.Serve(lis); err != nil {
-		log.Fatalf("failed to start the server: Retry again: %d ", err)
+		log.Fatalf("failed to start the server: Retry again: %v", err)
 	}
 }
 
@@ -88,9 +105,19 @@ func (r *Runtime) Stop() {
 	}
 }
 
-func (r *Runtime) handleOutBound(envs []proto.Envelope) {
-	for _, e := range envs {
-		r.ns.Send(r.ctx, e)
+func (r *Runtime) HandleEnvelope(req *protocol.EnvelopeRequest) {
+
+	env := proto.Envelope{
+		From:     req.From,
+		To:       req.To,
+		Protocol: proto.ProtocolID(req.Protocol),
+		Payload:  req.Payload,
+	}
+
+	out := r.proto.OnMessage(env)
+
+	for _, e := range out {
+		_ = r.ns.Send(r.ctx, e)
 	}
 }
 

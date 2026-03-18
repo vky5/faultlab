@@ -7,8 +7,9 @@ import (
 	"google.golang.org/grpc"
 )
 
-type NodeController interface {
+type NodeController interface { // this is what runtime implements  check runtime.go
 	Stop()
+	HandleEnvelope(env *protocol.EnvelopeRequest)
 }
 
 type NodeRPCServer struct {
@@ -55,5 +56,22 @@ func (n *NodeRPCServer) StopNode(ctx context.Context, _ *protocol.RemoveNodeRequ
 	return &protocol.RemoveNodeResponse{}, nil
 }
 
+// recieving the messages from the other remote nodes
+func (n *NodeRPCServer) SendEnvelope(
+	ctx context.Context,
+	req *protocol.EnvelopeRequest,
+) (*protocol.EnvelopeAck, error) {
+	if req == nil {
+		return &protocol.EnvelopeAck{
+			Success: false,
+			Message: "nil envelope",
+		}, nil
+	}
 
-// func (n *NodeRPCServer) Send(ctx context.Context)|=
+	n.nc.HandleEnvelope(req) // func in runtime
+
+	return &protocol.EnvelopeAck{
+		Success: true,
+		Message: "delivered",
+	}, nil
+}

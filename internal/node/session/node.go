@@ -50,7 +50,7 @@ type nodeSession struct {
 	probeInterval time.Duration
 }
 
-// sending message to other node
+// sending message to other node (doesnt check for should connect)
 func (ns *nodeSession) Send(ctx context.Context, env proto.Envelope) error {
 	ns.mu.Lock()
 	ps, ok := ns.peers[env.To]
@@ -93,6 +93,7 @@ func (ns *nodeSession) Send(ctx context.Context, env proto.Envelope) error {
 	return nil
 }
 
+// starting the initial connection with all nodes in a cluster 
 func (ns *nodeSession) Start(ctx context.Context) {
 	fmt.Printf("[node:%s] starting probe loop (interval=%v)\n", ns.nodeID, ns.probeInterval)
 	ticker := time.NewTicker(ns.probeInterval)
@@ -110,6 +111,7 @@ func (ns *nodeSession) Start(ctx context.Context) {
 	}
 }
 
+// sends the request to all peers at least once. It does check the shoulddial() so there are two times it is checked once in probepeers other in probe ocne 
 func (ns *nodeSession) probeOnce(ctx context.Context) {
 	ns.mu.Lock()
 	peers := make([]*peerState, 0, len(ns.peers))
@@ -128,6 +130,7 @@ func (ns *nodeSession) probeOnce(ctx context.Context) {
 	}
 }
 
+// sends the connection request to the peer in the peer state (it does check should dial) and update the peer state with updateSuccess()/ updateFailure()  and connection info 
 func (ns *nodeSession) probePeer(ctx context.Context, ps *peerState) {
 	// deterministic dialing: only owner initiates probes
 	if !shouldDial(ns.nodeID, ps.id) {
@@ -162,6 +165,7 @@ func (ns *nodeSession) probePeer(ctx context.Context, ps *peerState) {
 	ns.updateSuccess(ps)
 }
 
+// Dial to any node if the host and port is known. This also stores the connection of that node in the peers 
 func (ns *nodeSession) dial(ctx context.Context, host string, port int) (*grpcConn, error) {
 	target := fmt.Sprintf("%s:%d", host, port)
 
@@ -179,6 +183,7 @@ func (ns *nodeSession) dial(ctx context.Context, host string, port int) (*grpcCo
 	}, nil
 }
 
+// loops through all active connection and close it all
 func (ns *nodeSession) closeAllConnections() {
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
@@ -190,6 +195,7 @@ func (ns *nodeSession) closeAllConnections() {
 	}
 }
 
+// updating success message for a peer that info stored in peer state
 func (ns *nodeSession) updateSuccess(ps *peerState) {
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
@@ -211,6 +217,7 @@ func (ns *nodeSession) updateFailure(ps *peerState) {
 	}
 }
 
+// storing the peer info and based on the shouldDIal check, storing the conn from lower -> higher node and no connection if not that case
 func (ns *nodeSession) getOrCreatePeer(
 	ctx context.Context,
 	peerID, host string,
@@ -324,6 +331,7 @@ func (ns *nodeSession) OnPeersUpdated(peers []noderuntime.PeerInfo) {
 	}
 }
 
+// Read operation to check the health of the peer through their ID
 func (ns *nodeSession) GetPeerHealth(id string) noderuntime.PeerHealth {
 	ns.mu.RLock()
 	defer ns.mu.RUnlock()
