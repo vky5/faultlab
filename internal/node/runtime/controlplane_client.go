@@ -77,6 +77,15 @@ func (r *Runtime) getPeersFromControlplane(parentCtx context.Context) error {
 	}
 	r.ns.OnPeersUpdated(sessionPeers)
 
+	// Notify protocol about peer changes
+	peerIDs := make([]string, 0, len(r.config.Peers))
+	for _, p := range r.config.Peers {
+		peerIDs = append(peerIDs, p.ID)
+	}
+	if baseline, ok := r.proto.(interface{ SetPeers([]string) }); ok {
+		baseline.SetPeers(peerIDs)
+	}
+
 	return nil
 }
 

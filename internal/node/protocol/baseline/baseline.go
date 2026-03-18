@@ -84,6 +84,20 @@ func (b *BaselineProtocol) Stop() error {
 	return nil
 }
 
+// SetPeers updates the peer list dynamically
+func (b *BaselineProtocol) SetPeers(peers []string) {
+	log.Printf("[baseline] SetPeers called: %v\n", peers)
+	b.peers = make([]string, len(peers))
+	copy(b.peers, peers)
+
+	// Initialize lastSeen for new peers
+	for _, p := range peers {
+		if _, exists := b.lastSeen[p]; !exists {
+			b.lastSeen[p] = 0
+		}
+	}
+}
+
 func (b *BaselineProtocol) State() any {
 	return map[string]any{
 		"node":      b.nodeID,

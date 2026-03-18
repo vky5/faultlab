@@ -61,6 +61,16 @@ func (r *Runtime) Start() {
 
 	r.driver = driver
 
+	// Initialize protocol with initial peer list
+	peerIDs := make([]string, 0, len(r.config.Peers))
+	for _, p := range r.config.Peers {
+		peerIDs = append(peerIDs, p.ID)
+	}
+	if baseline, ok := p.(interface{ SetPeers([]string) }); ok {
+		baseline.SetPeers(peerIDs)
+		log.Printf("[runtime] Initial peers set for protocol: %v", peerIDs)
+	}
+
 	if err := r.proto.Start(r.config.ID); err != nil {
 		log.Fatalf("failed to initialize the initial state of the protocol")
 	}
