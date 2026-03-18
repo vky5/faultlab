@@ -26,6 +26,8 @@ type Runtime struct {
 
 	proto  proto.ClusterProtocol
 	driver *ProtocolDriver
+
+	eventCh chan RuntimeEvent
 }
 
 func New(cfg node.NodeConfig, cp CPSession, ns NodeSession) Runtime {
@@ -41,8 +43,8 @@ func (r *Runtime) Start() {
 	fmt.Printf("starting node %s on port %d\n", r.config.ID, r.config.Port)
 
 	r.ctx, r.cancel = context.WithCancel(context.Background())
-
-	r.server = node.NewServer(r) // implementing gRPC serverrs
+	r.server = node.NewServer(r)              // implementing gRPC serverrs
+	r.eventCh = make(chan RuntimeEvent, 1024) // implementing channel to recieve events // TODO check for the backpressure
 
 	log.Printf("[runtime] Loading baseline protocol...")
 	p, err := proto.Load("baseline")
@@ -54,9 +56,10 @@ func (r *Runtime) Start() {
 
 	driver := NewProtocolDriver(
 		1*time.Second, // time duration for each tick()
-		func(ctx context.Context, env proto.Envelope) {
-			r.ns.Send(ctx, env)
-		},
+		r.eventCh,
+		// func(ctx context.Context, env proto.Envelope) {
+		// 	r.ns.Send(ctx, env)
+		// },
 	)
 
 	r.driver = driver
@@ -77,6 +80,8 @@ func (r *Runtime) Start() {
 	log.Printf("[runtime] Protocol started for node %s", r.config.ID)
 
 	go r.driver.Run(r.ctx, p)
+
+	go r.runProtocolLoop()
 
 	// Start session's internal probe loop (sends actual pings, updates health state)
 	go r.ns.Start(r.ctx)
@@ -115,6 +120,52 @@ func (r *Runtime) Stop() {
 	}
 }
 
+/*
+If ctx cancelled, return
+if there is event, there can be two types of event
+
+	EventTick -> Triggered by Tick
+	EventMessage -> Triggered when message is sent
+
+(this actually works by recieving messages from ProtocolDriver)
+*/
+func (r *Runtime) runProtocolLoop() {
+	log.Println("[runtime] protocol reactor started")
+
+	for {
+		select {
+		case <-r.ctx.Done():
+			log.Println("[runtime] protocol reactor stopping")
+			return
+
+		case ev := <-r.eventCh:
+			switch ev.Type {
+
+			case EventTick:
+				out := r.proto.Tick() // this is where the proto tick is being called nd the response is sent 
+				for _, e := range out {
+					_ = r.ns.Send(r.ctx, e)
+				}
+
+			case EventMessage:
+				out := r.proto.OnMessage(*ev.Msg)
+				for _, e := range out {
+					_ = r.ns.Send(r.ctx, e)
+				}
+			}
+		}
+	}
+}
+
+
+/*
+from a separate node first
+- session gets a message 
+- Passes it to HandleEnvelope in runtime
+- It passes it to r.eventCh of type RuntimeEvent
+- EventCh has two types of message either tick or These Messages (making it single looped deterministic)
+
+*/
 func (r *Runtime) HandleEnvelope(req *protocol.EnvelopeRequest) {
 
 	env := proto.Envelope{
@@ -124,10 +175,9 @@ func (r *Runtime) HandleEnvelope(req *protocol.EnvelopeRequest) {
 		Payload:  req.Payload,
 	}
 
-	out := r.proto.OnMessage(env)
-
-	for _, e := range out {
-		_ = r.ns.Send(r.ctx, e)
+	r.eventCh <- RuntimeEvent{
+		Type: EventMessage,
+		Msg:  &env,
 	}
 }
 

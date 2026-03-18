@@ -11,17 +11,17 @@ import (
 type ProtocolDriver struct {
 	tickInterval time.Duration // after how many time we have to tick our logical clock (protocol.Tick()
 	stopCh       chan struct{} // thsi syntax is for signal only channel (not for data) using int or any other means u are expecting data nd also will take memory
-	sendFunc     func(context.Context, protocol.Envelope)
+	eventCh      chan<- RuntimeEvent
 }
 
 func NewProtocolDriver(
 	tickInterval time.Duration,
-	sendFunc func(context.Context, protocol.Envelope),
+	eventCh chan<- RuntimeEvent,
 ) *ProtocolDriver {
 	return &ProtocolDriver{
 		tickInterval: tickInterval,
 		stopCh:       make(chan struct{}),
-		sendFunc:     sendFunc,
+		eventCh:      eventCh,
 	}
 }
 
@@ -40,11 +40,9 @@ func (d *ProtocolDriver) Run(ctx context.Context, proto protocol.ClusterProtocol
 	for {
 		select {
 		case <-ticker.C:
-			out := proto.Tick()
-			for _, e := range out {
-				d.sendFunc(ctx, e)
+			d.eventCh <- RuntimeEvent{
+				Type: EventTick,
 			}
-
 		case <-d.stopCh:
 			return
 		}
