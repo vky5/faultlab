@@ -6,6 +6,14 @@ import (
 	"github.com/vky5/faultlab/internal/node/protocol"
 )
 
+type NodeStatus int
+
+const (
+	StatusAlive NodeStatus = iota
+	StatusSuspect
+	StatusDead
+)
+
 // defines the basic physics (state) of the cluster
 type BaselineProtocol struct {
 	nodeID string
@@ -15,8 +23,11 @@ type BaselineProtocol struct {
 	heartbeatInterval uint64 // after how many logical ticks heartbeat to send to
 	timeoutTicks      uint64
 
-	lastSeen map[string]uint64
-	peers    []string
+	lastSeen     map[string]uint64
+	status       map[string]NodeStatus
+	suspectSince map[string]uint64
+
+	peers []string
 }
 
 // creating a baseline
@@ -26,6 +37,8 @@ func NewBaselineProtocol(peers []string) *BaselineProtocol {
 		heartbeatInterval: 5,
 		timeoutTicks:      20,
 		lastSeen:          make(map[string]uint64),
+		status:            make(map[string]NodeStatus),
+		suspectSince:      make(map[string]uint64),
 		peers:             peers,
 	}
 }
@@ -38,6 +51,7 @@ func (b *BaselineProtocol) Start(nodeID string) error {
 
 	for _, p := range b.peers {
 		b.lastSeen[p] = 0
+		b.status[p] = StatusAlive
 	}
 	log.Printf("[baseline] Node %s initialized with peers: %v\n", nodeID, b.peers)
 	return nil
@@ -62,8 +76,37 @@ func (b *BaselineProtocol) Tick() []protocol.Envelope {
 
 			out = append(out, env)
 		}
-	} else {
-		log.Printf("[baseline] Node %s tick %d (no heartbeat yet)\n", b.nodeID, b.tick)
+	}
+
+	for _, peer := range b.peers {
+		last := b.lastSeen[peer]
+		diff := b.tick - last
+
+		switch b.status[peer] {
+		case StatusAlive:
+			if diff > b.timeoutTicks {
+				b.status[peer] = StatusSuspect
+				b.suspectSince[peer] = b.tick
+				log.Printf("[baseline] %s SUSPECT at tick %d", peer, b.tick)
+				// SUSPECT is not being broadcasted because it is uncertain 
+			}
+
+		case StatusSuspect:
+			if b.tick-b.suspectSince[peer] > b.timeoutTicks {
+				b.status[peer] = StatusDead
+				log.Printf("[baseline] %s DEAD at tick %d", peer, b.tick)
+
+				// DEAD being broadcasted because we are sure that this is the truth
+				out = append(out, protocol.Envelope{
+					From:     b.nodeID,
+					To:       "", // BROADCAST entirety of it in a cluster
+					Protocol: "baseline",
+					Kind:     protocol.KindProtocol,
+					Payload:  []byte("DEAD" + peer),
+				})
+			}
+		}
+
 	}
 
 	return out
@@ -74,6 +117,17 @@ func (b *BaselineProtocol) OnMessage(env protocol.Envelope) []protocol.Envelope 
 
 	// update liveness info
 	b.lastSeen[env.From] = b.tick //* At any logical time(tick) I heard from this
+
+	if b.status[env.From] != StatusAlive {
+		log.Printf("[baseline] %s revived", env.From)
+		b.status[env.From] = StatusAlive
+	}
+
+	// dead gossip merge
+	if string(env.Payload[:4]) == "DEAD" {
+		deadNode := string(env.Payload[5:])
+		b.status[deadNode] = StatusDead
+	}
 
 	// baseline currently does not respond
 	return nil
