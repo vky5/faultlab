@@ -1,7 +1,10 @@
 package baseline
 
 import (
+	"encoding/json"
 	"log"
+	"strconv"
+	"strings"
 
 	"github.com/vky5/faultlab/internal/node/protocol"
 )
@@ -14,6 +17,12 @@ const (
 	StatusDead
 )
 
+type MembershipEvent struct {
+	Node        string
+	Status      NodeStatus
+	Incarnation uint64
+}
+
 // defines the basic physics (state) of the cluster
 type BaselineProtocol struct {
 	nodeID string
@@ -25,9 +34,13 @@ type BaselineProtocol struct {
 
 	lastSeen     map[string]uint64
 	status       map[string]NodeStatus
+	incarnation  map[string]uint64 // for each peer initial incarnation number is 0 and it is like a self version for their message. they increase it only when they detect that their death notice is circulating. TRhen they send with higher incarnation that notifies other that previous message is old and to overwrite with this one
 	suspectSince map[string]uint64
 
 	peers []string
+
+	// Callback for dynamic peer discovery
+	peerDiscoveryCb protocol.PeerDiscoveryCallback
 }
 
 // creating a baseline
@@ -39,6 +52,7 @@ func NewBaselineProtocol(peers []string) *BaselineProtocol {
 		lastSeen:          make(map[string]uint64),
 		status:            make(map[string]NodeStatus),
 		suspectSince:      make(map[string]uint64),
+		incarnation:       make(map[string]uint64),
 		peers:             peers,
 	}
 }
@@ -48,13 +62,18 @@ func (b *BaselineProtocol) Start(nodeID string) error {
 	log.Printf("[baseline] Start called for node %s\n", nodeID)
 	b.nodeID = nodeID
 	b.tick = 0
+	b.status[b.nodeID] = StatusAlive // we are only storing status of Self
 
 	for _, p := range b.peers {
+		log.Print(p)
 		b.lastSeen[p] = 0
 		b.status[p] = StatusAlive
+		b.incarnation[p] = 0 // setting incarnation number of all peers to 0
 	}
+	b.incarnation[b.nodeID] = 0 // setting incarnation number of my node to 0
 	log.Printf("[baseline] Node %s initialized with peers: %v\n", nodeID, b.peers)
 	return nil
+
 }
 
 func (b *BaselineProtocol) Tick() []protocol.Envelope {
@@ -66,6 +85,10 @@ func (b *BaselineProtocol) Tick() []protocol.Envelope {
 	if b.tick%b.heartbeatInterval == 0 {
 		log.Printf("[baseline] Node %s tick %d: sending heartbeats to %d peers\n", b.nodeID, b.tick, len(b.peers))
 		for _, peer := range b.peers {
+			if b.status[peer] == StatusDead {
+				continue
+			}
+
 			env := protocol.Envelope{
 				From:     b.nodeID,
 				To:       peer,
@@ -79,6 +102,9 @@ func (b *BaselineProtocol) Tick() []protocol.Envelope {
 	}
 
 	for _, peer := range b.peers {
+		if b.status[peer] == StatusDead {
+			continue
+		}
 		last := b.lastSeen[peer]
 		diff := b.tick - last
 
@@ -88,13 +114,19 @@ func (b *BaselineProtocol) Tick() []protocol.Envelope {
 				b.status[peer] = StatusSuspect
 				b.suspectSince[peer] = b.tick
 				log.Printf("[baseline] %s SUSPECT at tick %d", peer, b.tick)
-				// SUSPECT is not being broadcasted because it is uncertain 
+				// SUSPECT is not being broadcasted because it is uncertain
 			}
 
 		case StatusSuspect:
-			if b.tick-b.suspectSince[peer] > b.timeoutTicks {
+			if b.tick-b.suspectSince[peer] > b.timeoutTicks { // TODO in SWIM we actually try probing by another peer and only then we mark it dead. this is wayy too agressive fix it later
 				b.status[peer] = StatusDead
 				log.Printf("[baseline] %s DEAD at tick %d", peer, b.tick)
+
+				ev := MembershipEvent{ // sending incarnation number with the status dead for a peer
+					Node:        peer,
+					Status:      StatusDead,
+					Incarnation: b.incarnation[peer],
+				}
 
 				// DEAD being broadcasted because we are sure that this is the truth
 				out = append(out, protocol.Envelope{
@@ -102,7 +134,7 @@ func (b *BaselineProtocol) Tick() []protocol.Envelope {
 					To:       "", // BROADCAST entirety of it in a cluster
 					Protocol: "baseline",
 					Kind:     protocol.KindProtocol,
-					Payload:  []byte("DEAD" + peer),
+					Payload:  encodeEvent(ev),
 				})
 			}
 		}
@@ -113,23 +145,69 @@ func (b *BaselineProtocol) Tick() []protocol.Envelope {
 }
 
 func (b *BaselineProtocol) OnMessage(env protocol.Envelope) []protocol.Envelope {
-	log.Printf("[baseline] Node %s received message from %s at tick %d\n", b.nodeID, env.From, b.tick)
+	log.Printf("[baseline] Node %s received message from %q at tick %d\n", b.nodeID, env.From, b.tick)
+
+	senderID := env.From
+	var senderHost string
+	var senderPort int
+
+	if idx := strings.Index(env.From, "@"); idx != -1 {
+		senderID = env.From[:idx]
+		addrStr := env.From[idx+1:]
+		if colonIdx := strings.LastIndex(addrStr, ":"); colonIdx != -1 {
+			senderHost = addrStr[:colonIdx]
+			port, _ := strconv.Atoi(addrStr[colonIdx+1:])
+			senderPort = port
+		}
+	}
+
+	// Restore env.From to just the ID so the rest of the logic uses the bare ID
+	env.From = senderID
 
 	// update liveness info
-	b.lastSeen[env.From] = b.tick //* At any logical time(tick) I heard from this
+	if env.From != b.nodeID {
+		log.Printf("[baseline] message from %q and %d", env.From, b.lastSeen[env.From])
+		if _, ok := b.lastSeen[env.From]; !ok {
+			log.Printf("[baseline] discovered new peer %s", env.From)
 
-	if b.status[env.From] != StatusAlive {
-		log.Printf("[baseline] %s revived", env.From)
-		b.status[env.From] = StatusAlive
+			b.peers = append(b.peers, env.From)
+			b.lastSeen[env.From] = b.tick
+			b.status[env.From] = StatusAlive
+			b.incarnation[env.From] = 0
+
+			// Notify runtime about peer discovery
+			if b.peerDiscoveryCb != nil && senderHost != "" {
+				b.peerDiscoveryCb.OnPeerDiscovered(env.From, senderHost, senderPort)
+			}
+		}
+
+		b.lastSeen[env.From] = b.tick //* At any logical time(tick) I heard from this
+
+		ev, err := decodeEvent(env.Payload)
+		if err != nil {
+			return nil // for normal heartbeat it will return from here
+		}
+
+		localInc := b.incarnation[ev.Node]
+
+		// SELF REVIVAL FIRST
+		if ev.Node == b.nodeID && ev.Status == StatusDead && ev.Incarnation >= localInc {
+			b.incarnation[b.nodeID]++
+			b.status[b.nodeID] = StatusAlive
+
+			log.Printf("[membership] self revival inc=%d", b.incarnation[b.nodeID])
+
+			return []protocol.Envelope{
+				b.makeMembershipEnvelope(b.nodeID, StatusAlive),
+			}
+		}
+
+		if ev.Incarnation > localInc {
+			b.incarnation[ev.Node] = ev.Incarnation
+			b.status[ev.Node] = ev.Status
+		}
 	}
 
-	// dead gossip merge
-	if string(env.Payload[:4]) == "DEAD" {
-		deadNode := string(env.Payload[5:])
-		b.status[deadNode] = StatusDead
-	}
-
-	// baseline currently does not respond
 	return nil
 }
 
@@ -148,16 +226,54 @@ func (b *BaselineProtocol) SetPeers(peers []string) {
 	for _, p := range peers {
 		if _, exists := b.lastSeen[p]; !exists {
 			b.lastSeen[p] = 0
+			b.status[p] = StatusAlive
+			b.incarnation[p] = 0
 		}
+	}
+}
+
+// SetPeerDiscoveryCallback sets the callback for dynamic peer discovery
+func (b *BaselineProtocol) SetPeerDiscoveryCallback(cb protocol.PeerDiscoveryCallback) {
+	b.peerDiscoveryCb = cb
+}
+
+func (b *BaselineProtocol) makeMembershipEnvelope(
+	node string,
+	status NodeStatus,
+) protocol.Envelope {
+	ev := MembershipEvent{
+		Node:        node,
+		Status:      status,
+		Incarnation: b.incarnation[node],
+	}
+
+	return protocol.Envelope{
+		From:     b.nodeID,
+		To:       "", // broadcast
+		Protocol: "baseline",
+		Kind:     protocol.KindProtocol,
+		Payload:  encodeEvent(ev),
 	}
 }
 
 func (b *BaselineProtocol) State() any {
 	return map[string]any{
-		"node":      b.nodeID,
-		"tick":      b.tick,
-		"last_seen": b.lastSeen,
+		"node":        b.nodeID,
+		"tick":        b.tick,
+		"last_seen":   b.lastSeen,
+		"status":      b.status,
+		"incarnation": b.incarnation,
+		"peers":       b.peers,
 	}
+}
+
+func (b *BaselineProtocol) hasPeer(id string) bool {
+	for _, p := range b.peers {
+		if p == id {
+			return true
+		}
+	}
+	return false
 }
 
 /*
@@ -170,4 +286,16 @@ func init() { // init runs anytime someone imports the module
 	protocol.Register("baseline", func() protocol.ClusterProtocol {
 		return NewBaselineProtocol(nil) // this actually returns object of type Baselineprotocol on which we perform operation we store this struct and since this struct impleemnts all the func of the interface it fits perfectly
 	})
+}
+
+// TODO shift to protobuf or more effective thingy
+func encodeEvent(ev MembershipEvent) []byte {
+	data, _ := json.Marshal(ev)
+	return data
+}
+
+func decodeEvent(bts []byte) (MembershipEvent, error) {
+	var ev MembershipEvent
+	err := json.Unmarshal(bts, &ev)
+	return ev, err
 }

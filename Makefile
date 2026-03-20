@@ -1,8 +1,9 @@
-.PHONY: node1 node2 node3 controlplane cluster test-nodes stop
+.PHONY: node1 node2 node3 controlplane cluster test-nodes stop config-node1 config-node2 config-node3
 
 NODE_CMD := go run ./cmd/node
 CP_CMD := go run ./cmd/controlplane
 CLUSTER_ID := c1
+CONFIG_FILE := node.runtime.ini
 
 # Start control plane
 controlplane:
@@ -10,13 +11,23 @@ controlplane:
 
 # Start nodes (run in separate terminals)
 node1:
-	$(NODE_CMD) -id node1 -port 7001 --peers node2:7002,node3:7003 -cluster-id $(CLUSTER_ID)
+	$(NODE_CMD) -id node1 -port 7001  -cluster-id $(CLUSTER_ID)
 
 node2:
-	$(NODE_CMD) -id node2 -port 7002 --peers node1:7001,node3:7003 -cluster-id $(CLUSTER_ID)
+	$(NODE_CMD) -id node2 -port 7002 -cluster-id $(CLUSTER_ID)
 
 node3:
-	$(NODE_CMD) -id node3 -port 7003 --peers node1:7001,node2:7002 -cluster-id $(CLUSTER_ID)
+	$(NODE_CMD) -id node3 -port 7003 -cluster-id $(CLUSTER_ID)
+
+# Start nodes with config file (run in separate terminals)
+config-node1:
+	$(NODE_CMD) -id node1 -port 7001 --peers node2:7002,node3:7003 -cluster-id $(CLUSTER_ID) -config $(CONFIG_FILE)
+
+config-node2:
+	$(NODE_CMD) -id node2 -port 7002 --peers node1:7001,node3:7003 -cluster-id $(CLUSTER_ID) -config $(CONFIG_FILE)
+
+config-node3:
+	$(NODE_CMD) -id node3 -port 7003 --peers node1:7001,node2:7002 -cluster-id $(CLUSTER_ID) -config $(CONFIG_FILE)
 
 # Start full cluster (controlplane + 3 nodes) in background
 cluster:
@@ -54,5 +65,8 @@ test-nodes:
 	@echo "  make node1"
 	@echo "  make node2"
 	@echo "  make node3"
+	@echo ""
+	@echo "With config file:"
+	@echo "  make config-node1 CONFIG_FILE=node.runtime.ini"
 	@echo ""
 	@echo "Watch for ping logs showing peer health status"

@@ -35,4 +35,5 @@ type NodeSession interface {
 	Start(ctx context.Context)          // start internal loops
 	GetPeerHealth(id string) PeerHealth // runtime reads state
 	Send(ctx context.Context, env proto.Envelope) error // sending message
+	RegisterPeer(peerID, host string, port int) // register discovered peers
 }

@@ -16,6 +16,10 @@ func (r *Runtime) controlPlaneSyncLoop(ctx context.Context) {
 		fmt.Printf("[node:%s] registration failed: %v\n", r.config.ID, err)
 	}
 
+	if err := r.getPeersFromControlplane(ctx); err != nil {
+		fmt.Printf("[node:%s] peer sync failed: %v\n", r.config.ID, err)
+	}
+
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
@@ -36,9 +40,6 @@ func (r *Runtime) runControlplaneSyncCycle(ctx context.Context) {
 		return
 	}
 
-	if err := r.getPeersFromControlplane(ctx); err != nil {
-		fmt.Printf("[node:%s] peer sync failed: %v\n", r.config.ID, err)
-	}
 }
 
 // registerNodeWithControlPlane performs initial registration.

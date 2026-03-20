@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/vky5/faultlab/internal/node"
+	"github.com/vky5/faultlab/internal/node/config"
 	proto "github.com/vky5/faultlab/internal/node/protocol"
 	_ "github.com/vky5/faultlab/internal/node/protocol/baseline" // to register baseline
 	"github.com/vky5/faultlab/internal/protocol"
@@ -16,13 +17,14 @@ import (
 )
 
 type Runtime struct {
-	config  node.NodeConfig
-	server  *grpc.Server
-	peersMu sync.RWMutex
-	ctx     context.Context
-	cancel  context.CancelFunc
-	cp      CPSession
-	ns      NodeSession
+	config        node.NodeConfig
+	runtimeConfig config.NodeRuntimeConfig
+	server        *grpc.Server
+	peersMu       sync.RWMutex
+	ctx           context.Context
+	cancel        context.CancelFunc
+	cp            CPSession
+	ns            NodeSession
 
 	proto  proto.ClusterProtocol
 	driver *ProtocolDriver
@@ -30,11 +32,12 @@ type Runtime struct {
 	eventCh chan RuntimeEvent
 }
 
-func New(cfg node.NodeConfig, cp CPSession, ns NodeSession) Runtime {
+func New(cfg node.NodeConfig, cp CPSession, ns NodeSession, runtimeConfig config.NodeRuntimeConfig) Runtime {
 	return Runtime{
-		config: cfg,
-		cp:     cp,
-		ns:     ns,
+		config:        cfg,
+		runtimeConfig: runtimeConfig,
+		cp:            cp,
+		ns:            ns,
 	}
 }
 
@@ -74,6 +77,11 @@ func (r *Runtime) Start() {
 		log.Printf("[runtime] Initial peers set for protocol: %v", peerIDs)
 	}
 
+	if pWithDiscovery, ok := p.(proto.ClusterProtocolWithDiscovery); ok {
+		pWithDiscovery.SetPeerDiscoveryCallback(r)
+		log.Printf("[runtime] Registered peer discovery callback")
+	}
+
 	if err := r.proto.Start(r.config.ID); err != nil {
 		log.Fatalf("failed to initialize the initial state of the protocol")
 	}
@@ -86,7 +94,12 @@ func (r *Runtime) Start() {
 	// Start session's internal probe loop (sends actual pings, updates health state)
 	go r.ns.Start(r.ctx)
 
+	// Start gRPC server FIRST and wait for it to be ready
 	go r.runGRPCServer(r.ctx)
+
+	// Wait briefly for gRPC server to start listening before registering
+	time.Sleep(500 * time.Millisecond)
+
 	go r.controlPlaneSyncLoop(r.ctx)
 
 	<-r.ctx.Done()
@@ -142,32 +155,33 @@ func (r *Runtime) runProtocolLoop() {
 			switch ev.Type {
 
 			case EventTick:
-				out := r.proto.Tick() // this is where the proto tick is being called nd the response is sent 
+				out := r.proto.Tick()
 				for _, e := range out {
-					_ = r.ns.Send(r.ctx, e)
+					if err := r.ns.Send(r.ctx, e); err != nil {
+						log.Println("SEND ERROR:", err)
+					}
 				}
 
 			case EventMessage:
 				out := r.proto.OnMessage(*ev.Msg)
 				for _, e := range out {
-					_ = r.ns.Send(r.ctx, e)
+					if err := r.ns.Send(r.ctx, e); err != nil {
+						log.Println("SEND ERROR:", err)
+					}
 				}
 			}
 		}
 	}
 }
 
-
 /*
 from a separate node first
-- session gets a message 
+- session gets a message
 - Passes it to HandleEnvelope in runtime
 - It passes it to r.eventCh of type RuntimeEvent
 - EventCh has two types of message either tick or These Messages (making it single looped deterministic)
-
 */
 func (r *Runtime) HandleEnvelope(req *protocol.EnvelopeRequest) {
-
 	env := proto.Envelope{
 		From:     req.From,
 		To:       req.To,
@@ -202,3 +216,10 @@ Runtime
 
 basically only one session at a time and that's it
 */
+
+// OnPeerDiscovered receives dynamically discovered peers from the protocol.
+func (r *Runtime) OnPeerDiscovered(peerID, peerHost string, peerPort int) {
+	log.Printf("[runtime] dynamically discovered peer %s at %s:%d", peerID, peerHost, peerPort)
+	r.ns.RegisterPeer(peerID, peerHost, peerPort)
+}
+

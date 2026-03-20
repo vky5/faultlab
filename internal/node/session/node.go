@@ -77,8 +77,11 @@ func (ns *nodeSession) Send(ctx context.Context, env proto.Envelope) error {
 	opCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
+	// encode host and port into From to allow in-band discovery
+	fromStr := fmt.Sprintf("%s@%s:%d", env.From, ns.nodeAddr, ns.nodePort)
+
 	_, err := ps.conn.client.SendEnvelope(opCtx, &protocol.EnvelopeRequest{
-		From:     env.From,
+		From:     fromStr,
 		To:       env.To,
 		Protocol: string(env.Protocol),
 		Payload:  env.Payload,
@@ -340,6 +343,31 @@ func (ns *nodeSession) GetPeerHealth(id string) noderuntime.PeerHealth {
 		return ps.health
 	}
 	return noderuntime.PeerDead // unknown peer treated as dead
+}
+
+// RegisterPeer dynamically adds a newly discovered peer to the session
+func (ns *nodeSession) RegisterPeer(peerID, host string, port int) {
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+
+	if ps, ok := ns.peers[peerID]; !ok {
+		ns.peers[peerID] = &peerState{
+			id:     peerID,
+			host:   host,
+			port:   port,
+			health: noderuntime.PeerAlive, // Just discovered, assume alive
+		}
+	} else {
+		// Update connection details if they changed
+		if ps.host != host || ps.port != port {
+			if ps.conn != nil && ps.conn.conn != nil {
+				_ = ps.conn.conn.Close()
+			}
+			ps.host = host
+			ps.port = port
+			ps.conn = nil
+		}
+	}
 }
 
 func shouldDial(self, peer string) bool {
