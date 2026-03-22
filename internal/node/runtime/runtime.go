@@ -224,10 +224,20 @@ func (r *Runtime) OnPeerDiscovered(peerID, peerHost string, peerPort int) {
 	if r.ctx == nil {
 		return
 	}
-
-	// Reconcile from controlplane so runtime/session/protocol stay aligned
-	// and stale peers are removed by OnPeersUpdated.
-	if err := r.getPeersFromControlplane(r.ctx); err != nil {
-		log.Printf("[runtime] peer discovery sync failed: %v", err)
+	if peerID == "" || peerPort <= 0 {
+		log.Printf("[runtime] ignoring invalid discovered peer id=%q host=%q port=%d", peerID, peerHost, peerPort)
+		return
 	}
+	if peerHost == "" {
+		peerHost = "localhost"
+	}
+
+	r.peersMu.RLock()
+	base := make([]*protocol.NodeInfo, 0, len(r.config.Peers))
+	for _, p := range r.config.Peers {
+		base = append(base, &protocol.NodeInfo{Id: p.ID, Address: p.Host, Port: uint32(p.Port)})
+	}
+	r.peersMu.RUnlock()
+
+	r.applyPeersTopology(base, &protocol.NodeInfo{Id: peerID, Address: peerHost, Port: uint32(peerPort)})
 }

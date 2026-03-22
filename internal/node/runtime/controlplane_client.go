@@ -54,8 +54,36 @@ func (r *Runtime) fetchPeersFromControlplane(parentCtx context.Context) ([]*prot
 	return r.cp.FetchPeers(parentCtx)
 }
 
-// applyPeersTopology reconciles runtime/session/protocol state from a peer list.
-func (r *Runtime) applyPeersTopology(peers []*protocol.NodeInfo) {
+// applyPeersTopology reconciles runtime/session/protocol state.
+// If discovered is non-nil, it is merged into the input topology first.
+func (r *Runtime) applyPeersTopology(peers []*protocol.NodeInfo, discovered *protocol.NodeInfo) {
+	if discovered != nil {
+		merged := make([]*protocol.NodeInfo, 0, len(peers)+1)
+		found := false
+		for _, p := range peers {
+			if p.Id == discovered.Id {
+				found = true
+				host := p.Address
+				port := p.Port
+				if discovered.Address != "" {
+					host = discovered.Address
+				}
+				if discovered.Port > 0 {
+					port = discovered.Port
+				}
+				merged = append(merged, &protocol.NodeInfo{Id: discovered.Id, Address: host, Port: port})
+				continue
+			}
+			merged = append(merged, p)
+		}
+
+		if !found {
+			merged = append(merged, discovered)
+		}
+
+		peers = merged
+	}
+
 	r.peersMu.Lock()
 	r.config.SetPeers(peers)
 
@@ -98,7 +126,7 @@ func (r *Runtime) getPeersFromControlplane(parentCtx context.Context) error {
 		return err
 	}
 
-	r.applyPeersTopology(peers)
+	r.applyPeersTopology(peers, nil)
 
 	return nil
 }
