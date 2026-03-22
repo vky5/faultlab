@@ -56,7 +56,7 @@ type nodeSession struct {
 	mu    sync.RWMutex // introduced here so that we can lock when updating the struct
 	peers map[string]*peerState
 
-	probeInterval time.Duration
+	probeInterval time.Duration // TODO check if we need runtime to handle this or this is better. If this is better strategy, implement something similar for controlplane session as well
 }
 
 // sending message to other node (doesnt check for should connect)

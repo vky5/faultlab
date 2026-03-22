@@ -88,17 +88,11 @@ func (r *Runtime) Start() {
 	log.Printf("[runtime] Protocol started for node %s", r.config.ID)
 
 	go r.driver.Run(r.ctx, p)
-
 	go r.runProtocolLoop()
+	go r.ns.Start(r.ctx) // Start node session's internal probe loop (sends actual pings, updates health state) 
+	go r.runGRPCServer(r.ctx) // Start gRPC server FIRST and wait for it to be ready
 
-	// Start session's internal probe loop (sends actual pings, updates health state)
-	go r.ns.Start(r.ctx)
-
-	// Start gRPC server FIRST and wait for it to be ready
-	go r.runGRPCServer(r.ctx)
-
-	// Wait briefly for gRPC server to start listening before registering
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond) // Wait briefly for gRPC server to start listening before registering
 
 	go r.controlPlaneSyncLoop(r.ctx)
 

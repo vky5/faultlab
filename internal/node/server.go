@@ -7,17 +7,17 @@ import (
 	"google.golang.org/grpc"
 )
 
-type NodeController interface { // this is what runtime implements  check runtime.go
+type noderuntime interface { // this is what runtime implements  check runtime.go
 	Stop()
 	HandleEnvelope(env *protocol.EnvelopeRequest)
 }
 
 type NodeRPCServer struct {
-	nc NodeController
+	nc noderuntime
 	protocol.UnimplementedNodeServiceServer
 }
 
-func NewServer(nc NodeController) *grpc.Server {
+func NewServer(nc noderuntime) *grpc.Server {
 	server := grpc.NewServer()
 
 	protocol.RegisterNodeServiceServer(server, &NodeRPCServer{

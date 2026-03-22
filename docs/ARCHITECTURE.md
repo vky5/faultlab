@@ -561,6 +561,49 @@ sequenceDiagram
     end
 ```
 
+### Runtime.Start Detailed Lifecycle
+
+```mermaid
+sequenceDiagram
+    participant NP as Node Process
+    participant RT as Runtime
+    participant REG as Protocol Registry
+    participant BP as BaselineProtocol
+    participant PD as ProtocolDriver
+    participant NS as NodeSession
+    participant GS as gRPC Server
+    participant CPL as ControlPlane Sync Loop
+
+    NP->>RT: Start()
+    RT->>RT: context.WithCancel()
+    RT->>RT: node.NewServer(r)
+    RT->>RT: make eventCh (buffered)
+
+    RT->>REG: Load("baseline")
+    REG-->>RT: protocol instance
+    RT->>PD: NewProtocolDriver(1s, eventCh)
+
+    RT->>BP: SetPeers(initial peer IDs)
+    RT->>BP: SetPeerDiscoveryCallback(r)
+    Note right of BP: Callback target becomes Runtime.OnPeerDiscovered
+
+    RT->>BP: Start(nodeID)
+    BP-->>RT: ready
+
+    par Background goroutines started
+        RT->>PD: go Run(ctx, protocol)
+        RT->>RT: go runProtocolLoop()
+        RT->>NS: go Start(ctx)
+        RT->>GS: go runGRPCServer(ctx)
+    end
+
+    RT->>RT: sleep 500ms (let gRPC listen)
+    RT->>CPL: go controlPlaneSyncLoop(ctx)
+
+    Note over GS: runGRPCServer internals\n1) net.Listen(port)\n2) goroutine waits for ctx.Done -> GracefulStop\n3) server.Serve(listener) blocks
+    Note over RT: Start() blocks until ctx.Done
+```
+
 ---
 
 ## Protocol Extension Points
