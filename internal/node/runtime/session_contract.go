@@ -8,10 +8,10 @@ import (
 )
 
 // PeerHealth represents the health status of a peer connection
-type PeerHealth int
+type TransportHealth int
 
 const (
-	PeerAlive PeerHealth = iota
+	PeerAlive TransportHealth = iota
 	PeerSuspect
 	PeerDead
 )
@@ -33,6 +33,6 @@ type CPSession interface {
 type NodeSession interface {
 	OnPeersUpdated(peers []PeerInfo)
 	Start(ctx context.Context)                          // start internal loops
-	GetPeerHealth(id string) PeerHealth                 // runtime reads state
+	GetTransportHealth(id string) TransportHealth                 // runtime reads state
 	Send(ctx context.Context, env proto.Envelope) error // sending message
 }

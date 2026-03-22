@@ -13,6 +13,15 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+const (
+	sessionColorPink = "\033[38;5;213m"
+	colorReset       = "\033[0m"
+)
+
+func logSessionf(format string, args ...any) {
+	fmt.Printf(sessionColorPink+format+colorReset, args...)
+}
+
 type grpcConn struct { // storing details related to gRPC connection
 	conn   *grpc.ClientConn
 	client protocol.NodeServiceClient
@@ -27,7 +36,7 @@ type peerState struct { // storing details related to peer state
 
 	lastSuccess time.Time
 	failCount   int
-	health      noderuntime.PeerHealth
+	health      noderuntime.TransportHealth
 }
 
 /*
@@ -98,14 +107,14 @@ func (ns *nodeSession) Send(ctx context.Context, env proto.Envelope) error {
 
 // starting the initial connection with all nodes in a cluster
 func (ns *nodeSession) Start(ctx context.Context) {
-	fmt.Printf("[node:%s] starting probe loop (interval=%v)\n", ns.nodeID, ns.probeInterval)
+	logSessionf("[node:%s] starting probe loop (interval=%v)\n", ns.nodeID, ns.probeInterval)
 	ticker := time.NewTicker(ns.probeInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Printf("[node:%s] stopping probe loop\n", ns.nodeID)
+			logSessionf("[node:%s] stopping probe loop\n", ns.nodeID)
 			ns.closeAllConnections()
 			return
 		case <-ticker.C:
@@ -123,7 +132,7 @@ func (ns *nodeSession) probeOnce(ctx context.Context) {
 	}
 	ns.mu.Unlock()
 
-	fmt.Printf("[node:%s] probing %d peers...\n", ns.nodeID, len(peers))
+	logSessionf("[node:%s] probing %d peers...\n", ns.nodeID, len(peers))
 	for _, ps := range peers {
 		// deterministic dialing: only owner initiates probes
 		if !shouldDial(ns.nodeID, ps.id) {
@@ -144,13 +153,13 @@ func (ns *nodeSession) probePeer(ctx context.Context, ps *peerState) {
 	if ps.conn == nil {
 		c, err := ns.dial(ctx, ps.host, ps.port)
 		if err != nil {
-			fmt.Printf("[node:%s] probe %s: dial failed: %v\n", ns.nodeID, ps.id, err)
+			logSessionf("[node:%s] probe %s: dial failed: %v\n", ns.nodeID, ps.id, err)
 			ns.updateFailure(ps)
 			return
 		}
 		ps.conn = c
 		if err := ns.handshake(ctx, ps); err != nil {
-			fmt.Printf("[node:%s] probe %s: handshake failed: %v\n", ns.nodeID, ps.id, err)
+			logSessionf("[node:%s] probe %s: handshake failed: %v\n", ns.nodeID, ps.id, err)
 		}
 	}
 
@@ -159,12 +168,12 @@ func (ns *nodeSession) probePeer(ctx context.Context, ps *peerState) {
 
 	_, err := ps.conn.client.Ping(opCtx, &protocol.PingRequest{From: ns.nodeID})
 	if err != nil {
-		fmt.Printf("[node:%s] probe %s (%s:%d): ping failed: %v\n", ns.nodeID, ps.id, ps.host, ps.port, err)
+		logSessionf("[node:%s] probe %s (%s:%d): ping failed: %v\n", ns.nodeID, ps.id, ps.host, ps.port, err)
 		ns.updateFailure(ps)
 		return
 	}
 
-	fmt.Printf("[node:%s] probe %s (%s:%d): alive\n", ns.nodeID, ps.id, ps.host, ps.port)
+	logSessionf("[node:%s] probe %s (%s:%d): alive\n", ns.nodeID, ps.id, ps.host, ps.port)
 	ns.updateSuccess(ps)
 }
 
@@ -218,50 +227,6 @@ func (ns *nodeSession) updateFailure(ps *peerState) {
 	} else if ps.failCount >= 2 {
 		ps.health = noderuntime.PeerDead
 	}
-}
-
-// storing the peer info and based on the shouldDIal check, storing the conn from lower -> higher node and no connection if not that case
-func (ns *nodeSession) getOrCreatePeer(
-	ctx context.Context,
-	peerID, host string,
-	port int,
-) (*peerState, error) {
-
-	ns.mu.Lock()
-	ps, ok := ns.peers[peerID]
-	if !ok {
-		ps = &peerState{
-			id:     peerID,
-			host:   host,
-			port:   port,
-			health: noderuntime.PeerSuspect,
-		}
-		ns.peers[peerID] = ps
-	}
-	ns.mu.Unlock()
-
-	// If not dial owner → just return metadata
-	if !shouldDial(ns.nodeID, peerID) {
-		return ps, nil
-	}
-
-	// Dial owner ensures connection
-	if ps.conn == nil {
-		c, err := ns.dial(ctx, ps.host, ps.port)
-		if err != nil {
-			return nil, err
-		}
-
-		ps.conn = c
-
-		if err := ns.handshake(ctx, ps); err != nil {
-			_ = c.conn.Close()
-			ps.conn = nil
-			return nil, err
-		}
-	}
-
-	return ps, nil
 }
 
 // handshake is used to establish trust and verify that the peer is responsive before adding it to the session
@@ -335,7 +300,7 @@ func (ns *nodeSession) OnPeersUpdated(peers []noderuntime.PeerInfo) {
 }
 
 // Read operation to check the health of the peer through their ID
-func (ns *nodeSession) GetPeerHealth(id string) noderuntime.PeerHealth {
+func (ns *nodeSession) GetTransportHealth(id string) noderuntime.TransportHealth {
 	ns.mu.RLock()
 	defer ns.mu.RUnlock()
 

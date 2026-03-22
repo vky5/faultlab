@@ -9,17 +9,26 @@ import (
 	"github.com/vky5/faultlab/internal/node/protocol"
 )
 
-type NodeStatus int
+const (
+	baselineColorGreen = "\033[32m"
+	colorReset         = "\033[0m"
+)
+
+func logBaselinef(format string, args ...any) {
+	log.Printf(baselineColorGreen+format+colorReset, args...)
+}
+
+type MembershipStatus int
 
 const (
-	StatusAlive NodeStatus = iota
+	StatusAlive MembershipStatus = iota
 	StatusSuspect
 	StatusDead
 )
 
 type MembershipEvent struct {
 	Node        string
-	Status      NodeStatus
+	Status      MembershipStatus
 	Incarnation uint64
 }
 
@@ -33,7 +42,7 @@ type BaselineProtocol struct {
 	timeoutTicks      uint64
 
 	lastSeen     map[string]uint64
-	status       map[string]NodeStatus
+	status       map[string]MembershipStatus
 	incarnation  map[string]uint64 // for each peer initial incarnation number is 0 and it is like a self version for their message. they increase it only when they detect that their death notice is circulating. TRhen they send with higher incarnation that notifies other that previous message is old and to overwrite with this one
 	suspectSince map[string]uint64
 
@@ -45,12 +54,12 @@ type BaselineProtocol struct {
 
 // creating a baseline
 func NewBaselineProtocol(peers []string) *BaselineProtocol {
-	log.Printf("[baseline] NewBaselineProtocol created with %d peers\n", len(peers))
+	logBaselinef("[baseline] NewBaselineProtocol created with %d peers\n", len(peers))
 	return &BaselineProtocol{
 		heartbeatInterval: 5,
 		timeoutTicks:      20,
 		lastSeen:          make(map[string]uint64),
-		status:            make(map[string]NodeStatus),
+		status:            make(map[string]MembershipStatus),
 		suspectSince:      make(map[string]uint64),
 		incarnation:       make(map[string]uint64),
 		peers:             peers,
@@ -59,7 +68,7 @@ func NewBaselineProtocol(peers []string) *BaselineProtocol {
 
 // set the initial state of the node
 func (b *BaselineProtocol) Start(nodeID string) error {
-	log.Printf("[baseline] Start called for node %s\n", nodeID)
+	logBaselinef("[baseline] Start called for node %s\n", nodeID)
 	b.nodeID = nodeID
 	b.tick = 0
 	b.status[b.nodeID] = StatusAlive // we are only storing status of Self
@@ -71,7 +80,7 @@ func (b *BaselineProtocol) Start(nodeID string) error {
 		b.incarnation[p] = 0 // setting incarnation number of all peers to 0
 	}
 	b.incarnation[b.nodeID] = 0 // setting incarnation number of my node to 0
-	log.Printf("[baseline] Node %s initialized with peers: %v\n", nodeID, b.peers)
+	logBaselinef("[baseline] Node %s initialized with peers: %v\n", nodeID, b.peers)
 	return nil
 
 }
@@ -83,7 +92,7 @@ func (b *BaselineProtocol) Tick() []protocol.Envelope {
 
 	// periodic heartbeat
 	if b.tick%b.heartbeatInterval == 0 {
-		log.Printf("[baseline] Node %s tick %d: sending heartbeats to %d peers\n", b.nodeID, b.tick, len(b.peers))
+		logBaselinef("[baseline] Node %s tick %d: sending heartbeats to %d peers\n", b.nodeID, b.tick, len(b.peers))
 		for _, peer := range b.peers {
 			if b.status[peer] == StatusDead {
 				continue
@@ -113,14 +122,14 @@ func (b *BaselineProtocol) Tick() []protocol.Envelope {
 			if diff > b.timeoutTicks {
 				b.status[peer] = StatusSuspect
 				b.suspectSince[peer] = b.tick
-				log.Printf("[baseline] %s SUSPECT at tick %d", peer, b.tick)
+				logBaselinef("[baseline] %s SUSPECT at tick %d", peer, b.tick)
 				// SUSPECT is not being broadcasted because it is uncertain
 			}
 
 		case StatusSuspect:
 			if b.tick-b.suspectSince[peer] > b.timeoutTicks { // TODO in SWIM we actually try probing by another peer and only then we mark it dead. this is wayy too agressive fix it later
 				b.status[peer] = StatusDead
-				log.Printf("[baseline] %s DEAD at tick %d", peer, b.tick)
+				logBaselinef("[baseline] %s DEAD at tick %d", peer, b.tick)
 
 				ev := MembershipEvent{ // sending incarnation number with the status dead for a peer
 					Node:        peer,
@@ -145,7 +154,7 @@ func (b *BaselineProtocol) Tick() []protocol.Envelope {
 }
 
 func (b *BaselineProtocol) OnMessage(env protocol.Envelope) []protocol.Envelope {
-	log.Printf("[baseline] Node %s received message from %q at tick %d\n", b.nodeID, env.From, b.tick)
+	logBaselinef("[baseline] Node %s received message from %q at tick %d\n", b.nodeID, env.From, b.tick)
 
 	senderID := env.From
 	var senderHost string
@@ -166,9 +175,9 @@ func (b *BaselineProtocol) OnMessage(env protocol.Envelope) []protocol.Envelope 
 
 	// update liveness info
 	if env.From != b.nodeID {
-		log.Printf("[baseline] message from %q and %d", env.From, b.lastSeen[env.From])
+		logBaselinef("[baseline] message from %q and %d", env.From, b.lastSeen[env.From])
 		if _, ok := b.lastSeen[env.From]; !ok {
-			log.Printf("[baseline] discovered new peer %s", env.From)
+			logBaselinef("[baseline] discovered new peer %s", env.From)
 
 			b.peers = append(b.peers, env.From)
 			b.lastSeen[env.From] = b.tick
@@ -195,7 +204,7 @@ func (b *BaselineProtocol) OnMessage(env protocol.Envelope) []protocol.Envelope 
 			b.incarnation[b.nodeID]++
 			b.status[b.nodeID] = StatusAlive
 
-			log.Printf("[membership] self revival inc=%d", b.incarnation[b.nodeID])
+			logBaselinef("[membership] self revival inc=%d", b.incarnation[b.nodeID])
 
 			return []protocol.Envelope{
 				b.makeMembershipEnvelope(b.nodeID, StatusAlive),
@@ -212,13 +221,13 @@ func (b *BaselineProtocol) OnMessage(env protocol.Envelope) []protocol.Envelope 
 }
 
 func (b *BaselineProtocol) Stop() error {
-	log.Printf("[baseline] Stop called for node %s\n", b.nodeID)
+	logBaselinef("[baseline] Stop called for node %s\n", b.nodeID)
 	return nil
 }
 
 // SetPeers updates the peer list dynamically
 func (b *BaselineProtocol) SetPeers(peers []string) {
-	log.Printf("[baseline] SetPeers called: %v\n", peers)
+	logBaselinef("[baseline] SetPeers called: %v\n", peers)
 	b.peers = make([]string, len(peers))
 	copy(b.peers, peers)
 
@@ -239,7 +248,7 @@ func (b *BaselineProtocol) SetPeerDiscoveryCallback(cb protocol.PeerDiscoveryCal
 
 func (b *BaselineProtocol) makeMembershipEnvelope(
 	node string,
-	status NodeStatus,
+	status MembershipStatus,
 ) protocol.Envelope {
 	ev := MembershipEvent{
 		Node:        node,
@@ -282,7 +291,7 @@ func (b *BaselineProtocol) hasPeer(id string) bool {
 */
 
 func init() { // init runs anytime someone imports the module
-	log.Println("[baseline] init: registering baseline protocol")
+	logBaselinef("[baseline] init: registering baseline protocol")
 	protocol.Register("baseline", func() protocol.ClusterProtocol {
 		return NewBaselineProtocol(nil) // this actually returns object of type Baselineprotocol on which we perform operation we store this struct and since this struct impleemnts all the func of the interface it fits perfectly
 	})
