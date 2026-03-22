@@ -220,6 +220,14 @@ basically only one session at a time and that's it
 // OnPeerDiscovered receives dynamically discovered peers from the protocol.
 func (r *Runtime) OnPeerDiscovered(peerID, peerHost string, peerPort int) {
 	log.Printf("[runtime] dynamically discovered peer %s at %s:%d", peerID, peerHost, peerPort)
-	r.ns.RegisterPeer(peerID, peerHost, peerPort)
-}
 
+	if r.ctx == nil {
+		return
+	}
+
+	// Reconcile from controlplane so runtime/session/protocol stay aligned
+	// and stale peers are removed by OnPeersUpdated.
+	if err := r.getPeersFromControlplane(r.ctx); err != nil {
+		log.Printf("[runtime] peer discovery sync failed: %v", err)
+	}
+}

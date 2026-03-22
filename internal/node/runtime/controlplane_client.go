@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/vky5/faultlab/internal/protocol"
 )
 
 // controlPlaneSyncLoop manages periodic sync with controlplane.
@@ -47,13 +49,13 @@ func (r *Runtime) registerNodeWithControlPlane(parentCtx context.Context) error 
 	return r.cp.Establish(parentCtx)
 }
 
-// getPeersFromControlplane fetches latest peer topology.
-func (r *Runtime) getPeersFromControlplane(parentCtx context.Context) error {
-	peers, err := r.cp.FetchPeers(parentCtx)
-	if err != nil {
-		return err
-	}
+// fetchPeersFromControlplane only fetches topology from controlplane.
+func (r *Runtime) fetchPeersFromControlplane(parentCtx context.Context) ([]*protocol.NodeInfo, error) {
+	return r.cp.FetchPeers(parentCtx)
+}
 
+// applyPeersTopology reconciles runtime/session/protocol state from a peer list.
+func (r *Runtime) applyPeersTopology(peers []*protocol.NodeInfo) {
 	r.peersMu.Lock()
 	r.config.SetPeers(peers)
 
@@ -86,6 +88,17 @@ func (r *Runtime) getPeersFromControlplane(parentCtx context.Context) error {
 	if baseline, ok := r.proto.(interface{ SetPeers([]string) }); ok {
 		baseline.SetPeers(peerIDs)
 	}
+
+}
+
+// getPeersFromControlplane fetches latest peer topology and applies it across runtime layers.
+func (r *Runtime) getPeersFromControlplane(parentCtx context.Context) error {
+	peers, err := r.fetchPeersFromControlplane(parentCtx)
+	if err != nil {
+		return err
+	}
+
+	r.applyPeersTopology(peers)
 
 	return nil
 }

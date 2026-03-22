@@ -32,8 +32,7 @@ type CPSession interface {
 // NodeSession manages peer interactions and connection lifecycle
 type NodeSession interface {
 	OnPeersUpdated(peers []PeerInfo)
-	Start(ctx context.Context)          // start internal loops
-	GetPeerHealth(id string) PeerHealth // runtime reads state
+	Start(ctx context.Context)                          // start internal loops
+	GetPeerHealth(id string) PeerHealth                 // runtime reads state
 	Send(ctx context.Context, env proto.Envelope) error // sending message
-	RegisterPeer(peerID, host string, port int) // register discovered peers
 }

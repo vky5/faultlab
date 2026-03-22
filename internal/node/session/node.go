@@ -96,7 +96,7 @@ func (ns *nodeSession) Send(ctx context.Context, env proto.Envelope) error {
 	return nil
 }
 
-// starting the initial connection with all nodes in a cluster 
+// starting the initial connection with all nodes in a cluster
 func (ns *nodeSession) Start(ctx context.Context) {
 	fmt.Printf("[node:%s] starting probe loop (interval=%v)\n", ns.nodeID, ns.probeInterval)
 	ticker := time.NewTicker(ns.probeInterval)
@@ -114,7 +114,7 @@ func (ns *nodeSession) Start(ctx context.Context) {
 	}
 }
 
-// sends the request to all peers at least once. It does check the shoulddial() so there are two times it is checked once in probepeers other in probe ocne 
+// sends the request to all peers at least once. It does check the shoulddial() so there are two times it is checked once in probepeers other in probe ocne
 func (ns *nodeSession) probeOnce(ctx context.Context) {
 	ns.mu.Lock()
 	peers := make([]*peerState, 0, len(ns.peers))
@@ -133,7 +133,7 @@ func (ns *nodeSession) probeOnce(ctx context.Context) {
 	}
 }
 
-// sends the connection request to the peer in the peer state (it does check should dial) and update the peer state with updateSuccess()/ updateFailure()  and connection info 
+// sends the connection request to the peer in the peer state (it does check should dial) and update the peer state with updateSuccess()/ updateFailure()  and connection info
 func (ns *nodeSession) probePeer(ctx context.Context, ps *peerState) {
 	// deterministic dialing: only owner initiates probes
 	if !shouldDial(ns.nodeID, ps.id) {
@@ -168,7 +168,7 @@ func (ns *nodeSession) probePeer(ctx context.Context, ps *peerState) {
 	ns.updateSuccess(ps)
 }
 
-// Dial to any node if the host and port is known. This also stores the connection of that node in the peers 
+// Dial to any node if the host and port is known. This also stores the connection of that node in the peers
 func (ns *nodeSession) dial(ctx context.Context, host string, port int) (*grpcConn, error) {
 	target := fmt.Sprintf("%s:%d", host, port)
 
@@ -343,31 +343,6 @@ func (ns *nodeSession) GetPeerHealth(id string) noderuntime.PeerHealth {
 		return ps.health
 	}
 	return noderuntime.PeerDead // unknown peer treated as dead
-}
-
-// RegisterPeer dynamically adds a newly discovered peer to the session
-func (ns *nodeSession) RegisterPeer(peerID, host string, port int) {
-	ns.mu.Lock()
-	defer ns.mu.Unlock()
-
-	if ps, ok := ns.peers[peerID]; !ok {
-		ns.peers[peerID] = &peerState{
-			id:     peerID,
-			host:   host,
-			port:   port,
-			health: noderuntime.PeerAlive, // Just discovered, assume alive
-		}
-	} else {
-		// Update connection details if they changed
-		if ps.host != host || ps.port != port {
-			if ps.conn != nil && ps.conn.conn != nil {
-				_ = ps.conn.conn.Close()
-			}
-			ps.host = host
-			ps.port = port
-			ps.conn = nil
-		}
-	}
 }
 
 func shouldDial(self, peer string) bool {
