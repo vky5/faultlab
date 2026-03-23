@@ -43,7 +43,7 @@ type BaselineProtocol struct {
 
 	lastSeen     map[string]uint64
 	status       map[string]MembershipStatus
-	incarnation  map[string]uint64 // for each peer initial incarnation number is 0 and it is like a self version for their message. they increase it only when they detect that their death notice is circulating. TRhen they send with higher incarnation that notifies other that previous message is old and to overwrite with this one
+	incarnation  map[string]uint64 // UNUSED: reserved for future multi-protocol consensus. Currently unused because implicit liveness (any message = peer alive) supersedes the need to arbitrate competing versions.
 	suspectSince map[string]uint64
 
 	peers []string
@@ -110,6 +110,7 @@ func (b *BaselineProtocol) Tick() []protocol.Envelope {
 		}
 	}
 
+	// for updating and broadcasting the state of the other nodes in the cluster (broadcast state dead only if the node actually dies)
 	for _, peer := range b.peers {
 		if b.status[peer] == StatusDead {
 			continue
@@ -131,20 +132,8 @@ func (b *BaselineProtocol) Tick() []protocol.Envelope {
 				b.status[peer] = StatusDead
 				logBaselinef("[baseline] %s DEAD at tick %d", peer, b.tick)
 
-				ev := MembershipEvent{ // sending incarnation number with the status dead for a peer
-					Node:        peer,
-					Status:      StatusDead,
-					Incarnation: b.incarnation[peer],
-				}
-
 				// DEAD being broadcasted because we are sure that this is the truth
-				out = append(out, protocol.Envelope{
-					From:     b.nodeID,
-					To:       "", // BROADCAST entirety of it in a cluster
-					Protocol: "baseline",
-					Kind:     protocol.KindProtocol,
-					Payload:  encodeEvent(ev),
-				})
+				out = append(out, b.makeMembershipEnvelope(peer, StatusDead))
 			}
 		}
 
@@ -192,6 +181,11 @@ func (b *BaselineProtocol) OnMessage(env protocol.Envelope) []protocol.Envelope 
 
 		b.lastSeen[env.From] = b.tick //* At any logical time(tick) I heard from this
 
+		if b.status[env.From] == StatusSuspect || b.status[env.From] == StatusDead {
+			b.status[env.From] = StatusAlive
+			logBaselinef("[baseline] %s revived via message at tick %d", env.From, b.tick)
+		}
+
 		ev, err := decodeEvent(env.Payload)
 		if err != nil {
 			return nil // for normal heartbeat it will return from here
@@ -199,8 +193,10 @@ func (b *BaselineProtocol) OnMessage(env protocol.Envelope) []protocol.Envelope 
 
 		localInc := b.incarnation[ev.Node]
 
+		// INCARNATION CHECK: Currently unused path (implicit liveness revives nodes via message arrival).
+		// Kept for future when competing membership state versions need arbitration.
 		// SELF REVIVAL FIRST
-		if ev.Node == b.nodeID && ev.Status == StatusDead && ev.Incarnation >= localInc {
+		if ev.Node == b.nodeID && ev.Status == StatusDead && ev.Incarnation > localInc {
 			b.incarnation[b.nodeID]++
 			b.status[b.nodeID] = StatusAlive
 
@@ -211,6 +207,7 @@ func (b *BaselineProtocol) OnMessage(env protocol.Envelope) []protocol.Envelope 
 			}
 		}
 
+		// INCARNATION CHECK: Currently unused path (see comment above).
 		if ev.Incarnation > localInc {
 			b.incarnation[ev.Node] = ev.Incarnation
 			b.status[ev.Node] = ev.Status
@@ -253,7 +250,7 @@ func (b *BaselineProtocol) makeMembershipEnvelope(
 	ev := MembershipEvent{
 		Node:        node,
 		Status:      status,
-		Incarnation: b.incarnation[node],
+		Incarnation: b.incarnation[node], // sending incarnation number with the node status
 	}
 
 	return protocol.Envelope{
@@ -274,15 +271,6 @@ func (b *BaselineProtocol) State() any {
 		"incarnation": b.incarnation,
 		"peers":       b.peers,
 	}
-}
-
-func (b *BaselineProtocol) hasPeer(id string) bool {
-	for _, p := range b.peers {
-		if p == id {
-			return true
-		}
-	}
-	return false
 }
 
 /*

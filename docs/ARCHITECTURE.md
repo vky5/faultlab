@@ -11,6 +11,41 @@
 
 ---
 
+## Fault Injection Engine (Current)
+
+**Location**: `internal/fault/engine.go`
+
+FaultLab currently provides a process-local, thread-safe fault engine with these implemented fault models:
+
+1. **Crash fault**
+- `Crash()`, `Recover()`, `IsCrashed()`
+- Simulates node crash mode for fault-aware components.
+
+2. **Probabilistic drop fault**
+- `SetDropRate(p float64)`, `ShouldDrop()`
+- Simulates packet/message loss with probability `p`.
+
+3. **Delay fault**
+- `SetDelay(ms int)`, `ApplyDelay()`
+- Injects fixed latency per operation.
+
+4. **Directional partition fault**
+- `Partition(peer string)`, `Heal(peer string)`, `IsPartitioned(peer string)`
+- Simulates targeted peer partitioning.
+- Directional semantics: `A -> B` blocked does not imply `B -> A` blocked.
+
+**Session integration contract**: `internal/node/session/fault_contract.go`
+- `IsCrashed()`
+- `ShouldDrop()`
+- `ApplyDelay()`
+- `IsPartitioned(peer string)`
+
+**Current boundary**:
+- Implemented: crash, drop, delay, directional partition
+- Not yet implemented: reordering, duplication, clock skew, Byzantine behavior
+
+---
+
 ## Logical Architecture Layers
 
 FaultLab is organized into **4 distinct logical layers**:

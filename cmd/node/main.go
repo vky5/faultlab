@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/vky5/faultlab/internal/fault"
 	"github.com/vky5/faultlab/internal/node"
 	"github.com/vky5/faultlab/internal/node/config"
 	noderuntime "github.com/vky5/faultlab/internal/node/runtime"
@@ -65,13 +66,16 @@ func main() {
 		cfg.Port,
 	)
 
+	fe:= fault.NewEngine()
+
 	nodeSession := session.NewNodeSession(
 		cfg.Host,
 		cfg.ID,
 		cfg.Port,
+		fe,
 	)
 
 	runtime := noderuntime.New(cfg, cpSession, nodeSession, runtimeCfg)
 
-	runtime.Start()
+	runtime.Start(fe)
 }

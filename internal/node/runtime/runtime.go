@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vky5/faultlab/internal/fault"
 	"github.com/vky5/faultlab/internal/node"
 	"github.com/vky5/faultlab/internal/node/config"
 	proto "github.com/vky5/faultlab/internal/node/protocol"
@@ -23,13 +24,16 @@ type Runtime struct {
 	peersMu       sync.RWMutex
 	ctx           context.Context
 	cancel        context.CancelFunc
-	cp            CPSession
-	ns            NodeSession
+
+	cp CPSession
+	ns NodeSession
 
 	proto  proto.ClusterProtocol
 	driver *ProtocolDriver
 
 	eventCh chan RuntimeEvent
+
+	fault *fault.Engine // inject the faults in the same node's runtime
 }
 
 func New(cfg node.NodeConfig, cp CPSession, ns NodeSession, runtimeConfig config.NodeRuntimeConfig) Runtime {
@@ -42,7 +46,7 @@ func New(cfg node.NodeConfig, cp CPSession, ns NodeSession, runtimeConfig config
 }
 
 // controls wht happens in nodes during starting
-func (r *Runtime) Start() {
+func (r *Runtime) Start(fe *fault.Engine) {
 	fmt.Printf("starting node %s on port %d\n", r.config.ID, r.config.Port)
 
 	r.ctx, r.cancel = context.WithCancel(context.Background())
@@ -63,9 +67,13 @@ func (r *Runtime) Start() {
 		// func(ctx context.Context, env proto.Envelope) {
 		// 	r.ns.Send(ctx, env)
 		// },
+		r.fault,
 	)
 
 	r.driver = driver
+
+	// initializing fault injection engine
+	r.fault = fe
 
 	// Initialize protocol with initial peer list
 	peerIDs := make([]string, 0, len(r.config.Peers))
@@ -89,12 +97,21 @@ func (r *Runtime) Start() {
 
 	go r.driver.Run(r.ctx, p)
 	go r.runProtocolLoop()
-	go r.ns.Start(r.ctx) // Start node session's internal probe loop (sends actual pings, updates health state) 
+	go r.ns.Start(r.ctx)      // Start node session's internal probe loop (sends actual pings, updates health state)
 	go r.runGRPCServer(r.ctx) // Start gRPC server FIRST and wait for it to be ready
 
 	time.Sleep(500 * time.Millisecond) // Wait briefly for gRPC server to start listening before registering
 
 	go r.controlPlaneSyncLoop(r.ctx)
+
+	go func() {
+		time.Sleep(10 * time.Second)
+		log.Println("***** CRASHING NODE *****")
+		r.fault.Crash()
+		// time.Sleep(50 * time.Second)
+		// log.Printf("**** Starting Recovery ****")
+		// r.fault.Recover()
+	}()
 
 	<-r.ctx.Done()
 }
@@ -151,20 +168,49 @@ func (r *Runtime) runProtocolLoop() {
 			case EventTick:
 				out := r.proto.Tick()
 				for _, e := range out {
-					if err := r.ns.Send(r.ctx, e); err != nil {
-						log.Println("SEND ERROR:", err)
-					}
+					r.sendEnvelope(&e)
 				}
 
 			case EventMessage:
 				out := r.proto.OnMessage(*ev.Msg)
 				for _, e := range out {
-					if err := r.ns.Send(r.ctx, e); err != nil {
-						log.Println("SEND ERROR:", err)
-					}
+					r.sendEnvelope(&e)
 				}
 			}
 		}
+	}
+}
+
+// sendEnvelope handles unicast and broadcast delivery
+func (r *Runtime) sendEnvelope(env *proto.Envelope) {
+	// Broadcast: To == "" means send to all peers
+	if env.To == "" {
+		r.peersMu.RLock()
+		peers := make([]string, 0, len(r.config.Peers))
+		for _, p := range r.config.Peers {
+			peers = append(peers, p.ID)
+		}
+		r.peersMu.RUnlock()
+
+		log.Printf("[runtime] broadcast %s from %s to %d peers", env.Protocol, env.From, len(peers))
+		for _, peerID := range peers {
+			unicast := &proto.Envelope{
+				From:     env.From,
+				To:       peerID,
+				Protocol: env.Protocol,
+				Kind:     env.Kind,
+				Payload:  env.Payload,
+			}
+			if err := r.ns.Send(r.ctx, *unicast); err != nil {
+				log.Printf("[runtime] broadcast send to %s failed: %v", peerID, err)
+			}
+		}
+		return
+	}
+
+	// Unicast: send to specific peer
+	if err := r.ns.Send(r.ctx, *env); err != nil {
+		log.Printf("[runtime] send to %s failed: %v", env.To, err)
 	}
 }
 
