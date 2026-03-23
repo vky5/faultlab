@@ -92,11 +92,19 @@ func (b *BaselineProtocol) Tick() []protocol.Envelope {
 
 	// periodic heartbeat
 	if b.tick%b.heartbeatInterval == 0 {
-		logBaselinef("[baseline] Node %s tick %d: sending heartbeats to %d peers\n", b.nodeID, b.tick, len(b.peers))
+		alivePeers := make([]string, 0, len(b.peers))
+		deadPeers := make([]string, 0)
 		for _, peer := range b.peers {
 			if b.status[peer] == StatusDead {
+				deadPeers = append(deadPeers, peer)
 				continue
 			}
+			alivePeers = append(alivePeers, peer)
+		}
+
+		logBaselinef("[baseline] Node %s tick %d: sending heartbeats to %d peers (dead=%v)\n", b.nodeID, b.tick, len(alivePeers), deadPeers)
+
+		for _, peer := range alivePeers {
 
 			env := protocol.Envelope{
 				From:     b.nodeID,

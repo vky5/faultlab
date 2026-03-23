@@ -5,11 +5,14 @@ import (
 
 	"github.com/vky5/faultlab/internal/protocol"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type noderuntime interface { // this is what runtime implements  check runtime.go
 	Stop()
 	HandleEnvelope(env *protocol.EnvelopeRequest)
+	IsCrashed() bool
 }
 
 type NodeRPCServer struct {
@@ -28,12 +31,20 @@ func NewServer(nc noderuntime) *grpc.Server {
 }
 
 func (n *NodeRPCServer) Ping(ctx context.Context, _ *protocol.PingRequest) (*protocol.PingResponse, error) {
+	if n.nc.IsCrashed() {
+		return nil, status.Error(codes.Unavailable, "node is crashed")
+	}
+
 	return &protocol.PingResponse{
 		Message: "Pong",
 	}, nil
 }
 
 func (n *NodeRPCServer) Handshake(ctx context.Context, req *protocol.HandshakeRequest) (*protocol.HandshakeResponse, error) {
+	if n.nc.IsCrashed() {
+		return nil, status.Error(codes.Unavailable, "node is crashed")
+	}
+
 	if req == nil {
 		return &protocol.HandshakeResponse{Success: false, Message: "handshake request is nil"}, nil
 	}
@@ -61,6 +72,10 @@ func (n *NodeRPCServer) SendEnvelope(
 	ctx context.Context,
 	req *protocol.EnvelopeRequest,
 ) (*protocol.EnvelopeAck, error) {
+	if n.nc.IsCrashed() {
+		return nil, status.Error(codes.Unavailable, "node is crashed")
+	}
+
 	if req == nil {
 		return &protocol.EnvelopeAck{
 			Success: false,

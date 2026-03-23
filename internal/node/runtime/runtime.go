@@ -61,19 +61,19 @@ func (r *Runtime) Start(fe *fault.Engine) {
 	r.proto = p
 	log.Printf("[runtime] Protocol loaded successfully: %T", p)
 
+	// initializing fault injection engine
+	r.fault = fe
+
 	driver := NewProtocolDriver(
 		1*time.Second, // time duration for each tick()
 		r.eventCh,
 		// func(ctx context.Context, env proto.Envelope) {
 		// 	r.ns.Send(ctx, env)
 		// },
-		r.fault,
+		fe,
 	)
 
 	r.driver = driver
-
-	// initializing fault injection engine
-	r.fault = fe
 
 	// Initialize protocol with initial peer list
 	peerIDs := make([]string, 0, len(r.config.Peers))
@@ -104,14 +104,15 @@ func (r *Runtime) Start(fe *fault.Engine) {
 
 	go r.controlPlaneSyncLoop(r.ctx)
 
-	go func() {
-		time.Sleep(10 * time.Second)
-		log.Println("***** CRASHING NODE *****")
-		r.fault.Crash()
-		// time.Sleep(50 * time.Second)
-		// log.Printf("**** Starting Recovery ****")
-		// r.fault.Recover()
-	}()
+	// * Uncomment to simulate the crash and recovery of the node
+	// go func() {
+	// 	time.Sleep(10 * time.Second)
+	// 	log.Println("***** CRASHING NODE *****")
+	// 	r.fault.Crash()
+	// 	time.Sleep(50 * time.Second)
+	// 	log.Printf("**** Starting Recovery ****")
+	// 	r.fault.Recover()
+	// }()
 
 	<-r.ctx.Done()
 }
@@ -142,6 +143,11 @@ func (r *Runtime) Stop() {
 	if r.server != nil {
 		r.server.GracefulStop() // closing grpc server
 	}
+}
+
+// IsCrashed reports whether this node is currently fault-injected as crashed.
+func (r *Runtime) IsCrashed() bool {
+	return r.fault != nil && r.fault.IsCrashed()
 }
 
 /*
