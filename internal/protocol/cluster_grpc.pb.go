@@ -22,6 +22,7 @@ const (
 	OrchestratorService_RegisterNode_FullMethodName = "/cluster.OrchestratorService/RegisterNode"
 	OrchestratorService_Heartbeat_FullMethodName    = "/cluster.OrchestratorService/Heartbeat"
 	OrchestratorService_GetPeers_FullMethodName     = "/cluster.OrchestratorService/GetPeers"
+	OrchestratorService_ReportLog_FullMethodName    = "/cluster.OrchestratorService/ReportLog"
 )
 
 // OrchestratorServiceClient is the client API for OrchestratorService service.
@@ -31,6 +32,7 @@ type OrchestratorServiceClient interface {
 	RegisterNode(ctx context.Context, in *RegisterNodeRequest, opts ...grpc.CallOption) (*RegisterNodeResponse, error)
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
 	GetPeers(ctx context.Context, in *PeersRequest, opts ...grpc.CallOption) (*PeersResponse, error)
+	ReportLog(ctx context.Context, in *LogRequest, opts ...grpc.CallOption) (*LogResponse, error)
 }
 
 type orchestratorServiceClient struct {
@@ -71,6 +73,16 @@ func (c *orchestratorServiceClient) GetPeers(ctx context.Context, in *PeersReque
 	return out, nil
 }
 
+func (c *orchestratorServiceClient) ReportLog(ctx context.Context, in *LogRequest, opts ...grpc.CallOption) (*LogResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LogResponse)
+	err := c.cc.Invoke(ctx, OrchestratorService_ReportLog_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // OrchestratorServiceServer is the server API for OrchestratorService service.
 // All implementations must embed UnimplementedOrchestratorServiceServer
 // for forward compatibility.
@@ -78,6 +90,7 @@ type OrchestratorServiceServer interface {
 	RegisterNode(context.Context, *RegisterNodeRequest) (*RegisterNodeResponse, error)
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
 	GetPeers(context.Context, *PeersRequest) (*PeersResponse, error)
+	ReportLog(context.Context, *LogRequest) (*LogResponse, error)
 	mustEmbedUnimplementedOrchestratorServiceServer()
 }
 
@@ -96,6 +109,9 @@ func (UnimplementedOrchestratorServiceServer) Heartbeat(context.Context, *Heartb
 }
 func (UnimplementedOrchestratorServiceServer) GetPeers(context.Context, *PeersRequest) (*PeersResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetPeers not implemented")
+}
+func (UnimplementedOrchestratorServiceServer) ReportLog(context.Context, *LogRequest) (*LogResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReportLog not implemented")
 }
 func (UnimplementedOrchestratorServiceServer) mustEmbedUnimplementedOrchestratorServiceServer() {}
 func (UnimplementedOrchestratorServiceServer) testEmbeddedByValue()                             {}
@@ -172,6 +188,24 @@ func _OrchestratorService_GetPeers_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OrchestratorService_ReportLog_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LogRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrchestratorServiceServer).ReportLog(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OrchestratorService_ReportLog_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrchestratorServiceServer).ReportLog(ctx, req.(*LogRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // OrchestratorService_ServiceDesc is the grpc.ServiceDesc for OrchestratorService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -190,6 +224,10 @@ var OrchestratorService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetPeers",
 			Handler:    _OrchestratorService_GetPeers_Handler,
+		},
+		{
+			MethodName: "ReportLog",
+			Handler:    _OrchestratorService_ReportLog_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

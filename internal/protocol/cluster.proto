@@ -8,6 +8,7 @@ service OrchestratorService {
   rpc RegisterNode (RegisterNodeRequest) returns (RegisterNodeResponse); 
   rpc Heartbeat (HeartbeatRequest) returns (HeartbeatResponse);
   rpc GetPeers (PeersRequest) returns (PeersResponse); // Get the info of peers in a cluster
+  rpc ReportLog (LogRequest) returns (LogResponse);
 }
 
 message RegisterNodeRequest {
@@ -53,4 +54,16 @@ message NodeInfo {
   string id = 1;
   string address = 2;
   uint32 port = 3;
+}
+
+message LogRequest {
+  string cluster_id = 1;
+  string node_id = 2;
+  int64 timestamp = 3;
+  string level = 4;
+  string message = 5;
+}
+
+message LogResponse {
+  bool ok = 1;
 }

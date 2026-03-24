@@ -15,11 +15,11 @@ func (r *Runtime) controlPlaneSyncLoop(ctx context.Context) {
 
 	// first registration (blocking, before loop)
 	if err := r.registerNodeWithControlPlane(ctx); err != nil {
-		fmt.Printf("[node:%s] registration failed: %v\n", r.config.ID, err)
+		r.logger.Printf("registration failed: %v", err)
 	}
 
 	if err := r.getPeersFromControlplane(ctx); err != nil {
-		fmt.Printf("[node:%s] peer sync failed: %v\n", r.config.ID, err)
+		r.logger.Printf("peer sync failed: %v", err)
 	}
 
 	ticker := time.NewTicker(3 * time.Second)
@@ -38,7 +38,7 @@ func (r *Runtime) controlPlaneSyncLoop(ctx context.Context) {
 // runControlplaneSyncCycle performs one full sync cycle.
 func (r *Runtime) runControlplaneSyncCycle(ctx context.Context) {
 	if err := r.sendHeartbeatToControlPlane(ctx); err != nil {
-		fmt.Printf("[node:%s] heartbeat failed: %v\n", r.config.ID, err)
+		r.logger.Printf("heartbeat failed: %v", err)
 		return
 	}
 
@@ -93,8 +93,8 @@ func (r *Runtime) applyPeersTopology(peers []*protocol.NodeInfo, discovered *pro
 	}
 	r.peersMu.Unlock()
 
-	fmt.Printf("[node:%s] peers updated: count=%d peers=[%s]\n",
-		r.config.ID, len(peersStr), strings.Join(peersStr, ", "))
+	r.logger.Printf("peers updated: count=%d peers=[%s]",
+		len(peersStr), strings.Join(peersStr, ", "))
 
 	// Runtime passes peer topology to session
 	// Session owns connection lifecycle: decides what to add/remove
@@ -134,7 +134,7 @@ func (r *Runtime) getPeersFromControlplane(parentCtx context.Context) error {
 // sendHeartbeatToControlPlane reports liveness.
 func (r *Runtime) sendHeartbeatToControlPlane(parentCtx context.Context) error {
 	if r.IsCrashed() {
-		fmt.Printf("[node:%s] heartbeat skipped: node is crashed\n", r.config.ID)
+		r.logger.Printf("heartbeat skipped: node is crashed")
 		return nil
 	}
 
@@ -142,6 +142,6 @@ func (r *Runtime) sendHeartbeatToControlPlane(parentCtx context.Context) error {
 		return err
 	}
 
-	fmt.Printf("[node:%s] heartbeat sent\n", r.config.ID)
+	// r.logger.Printf("heartbeat sent") // Too noisy to pipe over RPC
 	return nil
 }

@@ -150,3 +150,27 @@ func (s *cpsession) FetchPeers(ctx context.Context) ([]*protocol.NodeInfo, error
 
 	return resp.Peers, nil
 }
+
+// ReportLog streams a log entry to the control plane
+func (s *cpsession) ReportLog(ctx context.Context, level, msg string) error {
+	if err := s.connect(ctx); err != nil {
+		return err
+	}
+
+	opCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	_, err := s.client.ReportLog(opCtx, &protocol.LogRequest{
+		ClusterId: s.clusterID,
+		NodeId:    s.nodeID,
+		Timestamp: time.Now().UnixMilli(),
+		Level:     level,
+		Message:   msg,
+	})
+	
+	if err != nil {
+		// we don't invalidate connection violently for dropped logs
+		return err
+	}
+	return nil
+}

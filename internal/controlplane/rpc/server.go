@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"fmt"
 
 	controlplanesvc "github.com/vky5/faultlab/internal/controlplane/service"
 	pb "github.com/vky5/faultlab/internal/protocol"
@@ -78,4 +79,17 @@ func (s *Server) Heartbeat(
 	}
 
 	return &pb.HeartbeatResponse{Ok: true}, nil
+}
+
+// ReportLog receives log entries from a node and prints them to the Control Plane console.
+func (s *Server) ReportLog(
+	ctx context.Context,
+	req *pb.LogRequest,
+) (*pb.LogResponse, error) {
+
+	// For Phase 4, we just blindly print it to verify the pipe works.
+	fmt.Printf("[ControlPlane Intercept] Node: %s | [%s] %s\n",
+		req.NodeId, req.Level, req.Message)
+
+	return &pb.LogResponse{Ok: true}, nil
 }

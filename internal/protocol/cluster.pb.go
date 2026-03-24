@@ -434,6 +434,126 @@ func (x *NodeInfo) GetPort() uint32 {
 	return 0
 }
 
+type LogRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ClusterId     string                 `protobuf:"bytes,1,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
+	NodeId        string                 `protobuf:"bytes,2,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	Timestamp     int64                  `protobuf:"varint,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Level         string                 `protobuf:"bytes,4,opt,name=level,proto3" json:"level,omitempty"`
+	Message       string                 `protobuf:"bytes,5,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LogRequest) Reset() {
+	*x = LogRequest{}
+	mi := &file_internal_protocol_cluster_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LogRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogRequest) ProtoMessage() {}
+
+func (x *LogRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_protocol_cluster_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogRequest.ProtoReflect.Descriptor instead.
+func (*LogRequest) Descriptor() ([]byte, []int) {
+	return file_internal_protocol_cluster_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *LogRequest) GetClusterId() string {
+	if x != nil {
+		return x.ClusterId
+	}
+	return ""
+}
+
+func (x *LogRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *LogRequest) GetTimestamp() int64 {
+	if x != nil {
+		return x.Timestamp
+	}
+	return 0
+}
+
+func (x *LogRequest) GetLevel() string {
+	if x != nil {
+		return x.Level
+	}
+	return ""
+}
+
+func (x *LogRequest) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+type LogResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LogResponse) Reset() {
+	*x = LogResponse{}
+	mi := &file_internal_protocol_cluster_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LogResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogResponse) ProtoMessage() {}
+
+func (x *LogResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_protocol_cluster_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogResponse.ProtoReflect.Descriptor instead.
+func (*LogResponse) Descriptor() ([]byte, []int) {
+	return file_internal_protocol_cluster_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *LogResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
 var File_internal_protocol_cluster_proto protoreflect.FileDescriptor
 
 const file_internal_protocol_cluster_proto_rawDesc = "" +
@@ -462,16 +582,27 @@ const file_internal_protocol_cluster_proto_rawDesc = "" +
 	"\bNodeInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\x12\x12\n" +
-	"\x04port\x18\x03 \x01(\rR\x04port*6\n" +
+	"\x04port\x18\x03 \x01(\rR\x04port\"\x92\x01\n" +
+	"\n" +
+	"LogRequest\x12\x1d\n" +
+	"\n" +
+	"cluster_id\x18\x01 \x01(\tR\tclusterId\x12\x17\n" +
+	"\anode_id\x18\x02 \x01(\tR\x06nodeId\x12\x1c\n" +
+	"\ttimestamp\x18\x03 \x01(\x03R\ttimestamp\x12\x14\n" +
+	"\x05level\x18\x04 \x01(\tR\x05level\x12\x18\n" +
+	"\amessage\x18\x05 \x01(\tR\amessage\"\x1d\n" +
+	"\vLogResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok*6\n" +
 	"\x0eRegisterStatus\x12\v\n" +
 	"\aUNKNOWN\x10\x00\x12\v\n" +
 	"\aSUCCESS\x10\x01\x12\n" +
 	"\n" +
-	"\x06FAILED\x10\x022\xe1\x01\n" +
+	"\x06FAILED\x10\x022\x99\x02\n" +
 	"\x13OrchestratorService\x12K\n" +
 	"\fRegisterNode\x12\x1c.cluster.RegisterNodeRequest\x1a\x1d.cluster.RegisterNodeResponse\x12B\n" +
 	"\tHeartbeat\x12\x19.cluster.HeartbeatRequest\x1a\x1a.cluster.HeartbeatResponse\x129\n" +
-	"\bGetPeers\x12\x15.cluster.PeersRequest\x1a\x16.cluster.PeersResponseB\x1cZ\x1afaultlab/internal/protocolb\x06proto3"
+	"\bGetPeers\x12\x15.cluster.PeersRequest\x1a\x16.cluster.PeersResponse\x126\n" +
+	"\tReportLog\x12\x13.cluster.LogRequest\x1a\x14.cluster.LogResponseB\x1cZ\x1afaultlab/internal/protocolb\x06proto3"
 
 var (
 	file_internal_protocol_cluster_proto_rawDescOnce sync.Once
@@ -486,7 +617,7 @@ func file_internal_protocol_cluster_proto_rawDescGZIP() []byte {
 }
 
 var file_internal_protocol_cluster_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_internal_protocol_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_internal_protocol_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_internal_protocol_cluster_proto_goTypes = []any{
 	(RegisterStatus)(0),          // 0: cluster.RegisterStatus
 	(*RegisterNodeRequest)(nil),  // 1: cluster.RegisterNodeRequest
@@ -496,6 +627,8 @@ var file_internal_protocol_cluster_proto_goTypes = []any{
 	(*PeersRequest)(nil),         // 5: cluster.PeersRequest
 	(*PeersResponse)(nil),        // 6: cluster.PeersResponse
 	(*NodeInfo)(nil),             // 7: cluster.NodeInfo
+	(*LogRequest)(nil),           // 8: cluster.LogRequest
+	(*LogResponse)(nil),          // 9: cluster.LogResponse
 }
 var file_internal_protocol_cluster_proto_depIdxs = []int32{
 	0, // 0: cluster.RegisterNodeResponse.status:type_name -> cluster.RegisterStatus
@@ -503,11 +636,13 @@ var file_internal_protocol_cluster_proto_depIdxs = []int32{
 	1, // 2: cluster.OrchestratorService.RegisterNode:input_type -> cluster.RegisterNodeRequest
 	3, // 3: cluster.OrchestratorService.Heartbeat:input_type -> cluster.HeartbeatRequest
 	5, // 4: cluster.OrchestratorService.GetPeers:input_type -> cluster.PeersRequest
-	2, // 5: cluster.OrchestratorService.RegisterNode:output_type -> cluster.RegisterNodeResponse
-	4, // 6: cluster.OrchestratorService.Heartbeat:output_type -> cluster.HeartbeatResponse
-	6, // 7: cluster.OrchestratorService.GetPeers:output_type -> cluster.PeersResponse
-	5, // [5:8] is the sub-list for method output_type
-	2, // [2:5] is the sub-list for method input_type
+	8, // 5: cluster.OrchestratorService.ReportLog:input_type -> cluster.LogRequest
+	2, // 6: cluster.OrchestratorService.RegisterNode:output_type -> cluster.RegisterNodeResponse
+	4, // 7: cluster.OrchestratorService.Heartbeat:output_type -> cluster.HeartbeatResponse
+	6, // 8: cluster.OrchestratorService.GetPeers:output_type -> cluster.PeersResponse
+	9, // 9: cluster.OrchestratorService.ReportLog:output_type -> cluster.LogResponse
+	6, // [6:10] is the sub-list for method output_type
+	2, // [2:6] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
 	2, // [2:2] is the sub-list for extension extendee
 	0, // [0:2] is the sub-list for field type_name
@@ -524,7 +659,7 @@ func file_internal_protocol_cluster_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_protocol_cluster_proto_rawDesc), len(file_internal_protocol_cluster_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   7,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

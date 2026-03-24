@@ -34,6 +34,7 @@ type Runtime struct {
 	eventCh chan RuntimeEvent
 
 	fault *fault.Engine // inject the faults in the same node's runtime
+	logger *Logger
 }
 
 func New(cfg node.NodeConfig, cp CPSession, ns NodeSession, runtimeConfig config.NodeRuntimeConfig) Runtime {
@@ -42,24 +43,25 @@ func New(cfg node.NodeConfig, cp CPSession, ns NodeSession, runtimeConfig config
 		runtimeConfig: runtimeConfig,
 		cp:            cp,
 		ns:            ns,
+		logger:        NewLogger(cfg.ID, "runtime", cp),
 	}
 }
 
 // controls wht happens in nodes during starting
 func (r *Runtime) Start(fe *fault.Engine) {
-	fmt.Printf("starting node %s on port %d\n", r.config.ID, r.config.Port)
+	r.logger.Printf("starting node %s on port %d", r.config.ID, r.config.Port)
 
 	r.ctx, r.cancel = context.WithCancel(context.Background())
 	r.server = node.NewServer(r)              // implementing gRPC serverrs
 	r.eventCh = make(chan RuntimeEvent, 1024) // implementing channel to recieve events // TODO check for the backpressure
 
-	log.Printf("[runtime] Loading baseline protocol...")
+	r.logger.Printf("Loading baseline protocol...")
 	p, err := proto.Load("baseline")
 	if err != nil {
 		log.Fatalf("protocol load failed: %v", err)
 	}
 	r.proto = p
-	log.Printf("[runtime] Protocol loaded successfully: %T", p)
+	r.logger.Printf("Protocol loaded successfully: %T", p)
 
 	// initializing fault injection engine
 	r.fault = fe
@@ -82,18 +84,18 @@ func (r *Runtime) Start(fe *fault.Engine) {
 	}
 	if baseline, ok := p.(interface{ SetPeers([]string) }); ok {
 		baseline.SetPeers(peerIDs)
-		log.Printf("[runtime] Initial peers set for protocol: %v", peerIDs)
+		r.logger.Printf("Initial peers set for protocol: %v", peerIDs)
 	}
 
 	if pWithDiscovery, ok := p.(proto.ClusterProtocolWithDiscovery); ok {
 		pWithDiscovery.SetPeerDiscoveryCallback(r)
-		log.Printf("[runtime] Registered peer discovery callback")
+		r.logger.Printf("Registered peer discovery callback")
 	}
 
 	if err := r.proto.Start(r.config.ID); err != nil {
 		log.Fatalf("failed to initialize the initial state of the protocol")
 	}
-	log.Printf("[runtime] Protocol started for node %s", r.config.ID)
+	r.logger.Printf("Protocol started for node %s", r.config.ID)
 
 	go r.driver.Run(r.ctx, p)
 	go r.runProtocolLoop()
@@ -160,12 +162,12 @@ if there is event, there can be two types of event
 (this actually works by recieving messages from ProtocolDriver)
 */
 func (r *Runtime) runProtocolLoop() {
-	log.Println("[runtime] protocol reactor started")
+	r.logger.Printf("protocol reactor started")
 
 	for {
 		select {
 		case <-r.ctx.Done():
-			log.Println("[runtime] protocol reactor stopping")
+			r.logger.Printf("protocol reactor stopping")
 			return
 
 		case ev := <-r.eventCh:
@@ -198,7 +200,7 @@ func (r *Runtime) sendEnvelope(env *proto.Envelope) {
 		}
 		r.peersMu.RUnlock()
 
-		log.Printf("[runtime] broadcast %s from %s to %d peers", env.Protocol, env.From, len(peers))
+		r.logger.Printf("broadcast %s from %s to %d peers", env.Protocol, env.From, len(peers))
 		for _, peerID := range peers {
 			unicast := &proto.Envelope{
 				From:     env.From,
@@ -208,7 +210,7 @@ func (r *Runtime) sendEnvelope(env *proto.Envelope) {
 				Payload:  env.Payload,
 			}
 			if err := r.ns.Send(r.ctx, *unicast); err != nil {
-				log.Printf("[runtime] broadcast send to %s failed: %v", peerID, err)
+				r.logger.Printf("broadcast send to %s failed: %v", peerID, err)
 			}
 		}
 		return
@@ -216,7 +218,7 @@ func (r *Runtime) sendEnvelope(env *proto.Envelope) {
 
 	// Unicast: send to specific peer
 	if err := r.ns.Send(r.ctx, *env); err != nil {
-		log.Printf("[runtime] send to %s failed: %v", env.To, err)
+		r.logger.Printf("send to %s failed: %v", env.To, err)
 	}
 }
 
@@ -265,13 +267,13 @@ basically only one session at a time and that's it
 
 // OnPeerDiscovered receives dynamically discovered peers from the protocol.
 func (r *Runtime) OnPeerDiscovered(peerID, peerHost string, peerPort int) {
-	log.Printf("[runtime] dynamically discovered peer %s at %s:%d", peerID, peerHost, peerPort)
+	r.logger.Printf("dynamically discovered peer %s at %s:%d", peerID, peerHost, peerPort)
 
 	if r.ctx == nil {
 		return
 	}
 	if peerID == "" || peerPort <= 0 {
-		log.Printf("[runtime] ignoring invalid discovered peer id=%q host=%q port=%d", peerID, peerHost, peerPort)
+		r.logger.Printf("ignoring invalid discovered peer id=%q host=%q port=%d", peerID, peerHost, peerPort)
 		return
 	}
 	if peerHost == "" {
@@ -350,7 +352,7 @@ func (r *Runtime) SetFaultParams(params *protocol.FaultRequest) error {
 		r.fault.Partition(id)
 	}
 
-	log.Printf("[runtime] fault params applied: crashed=%v drop_rate=%.3f delay_ms=%d partition=%v", params.GetCrashed(), dropRate, delayMs, params.GetPartition())
+	r.logger.Printf("fault params applied: crashed=%v drop_rate=%.3f delay_ms=%d partition=%v", params.GetCrashed(), dropRate, delayMs, params.GetPartition())
 
 	return nil
 }
