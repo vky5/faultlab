@@ -26,6 +26,8 @@ func (m *Manager) RegisterNode(clusterID, nodeID, address string, port int) []cl
 		Address:  address,
 		Port:     port,
 		LastSeen: time.Now(),
+		Status:   "active",
+		Fault:    cluster.DefaultFaultState(),
 	}
 	clusterState.Nodes[nodeID] = node
 
@@ -42,8 +44,8 @@ func (m *Manager) RegisterNode(clusterID, nodeID, address string, port int) []cl
 - remove node func
 - remove node gprc
 - add cluster
-- remove cluster 
-*/ 
+- remove cluster
+*/
 
 // RemoveNode removes node from cluster state
 func (m *Manager) RemoveNode(clusterID, nodeID string) error {
@@ -81,18 +83,18 @@ func (m *Manager) GetNodes(clusterID string) ([]cluster.Node, error) {
 }
 
 func (m *Manager) GetNode(clusterID, nodeID string) (*cluster.Node, error) {
-    m.mu.RLock()
-    defer m.mu.RUnlock()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 
-    c, ok := m.clusters[clusterID]
-    if !ok {
-        return nil, fmt.Errorf("cluster not found")
-    }
+	c, ok := m.clusters[clusterID]
+	if !ok {
+		return nil, fmt.Errorf("cluster not found")
+	}
 
-    n, ok := c.Nodes[nodeID]
-    if !ok {
-        return nil, fmt.Errorf("node not found")
-    }
+	n, ok := c.Nodes[nodeID]
+	if !ok {
+		return nil, fmt.Errorf("node not found")
+	}
 
-    return n, nil
+	return n, nil
 }

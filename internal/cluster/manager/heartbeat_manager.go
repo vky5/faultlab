@@ -21,10 +21,11 @@ func (m *Manager) Heartbeat(clusterID, nodeID string) error {
 	}
 
 	node.LastSeen = time.Now()
+	node.Status = "active"
 	return nil
 }
 
-// Cleanup removes nodes that have not heartbeated within the timeout.
+// Cleanup marks nodes dead when heartbeat timeout is exceeded.
 func (m *Manager) Cleanup(timeout time.Duration) {
 	for {
 		time.Sleep(timeout)
@@ -33,7 +34,8 @@ func (m *Manager) Cleanup(timeout time.Duration) {
 		for _, clusterState := range m.clusters {
 			for id, node := range clusterState.Nodes {
 				if time.Since(node.LastSeen) > timeout {
-					delete(clusterState.Nodes, id)
+					node.Status = "dead"
+					clusterState.Nodes[id] = node
 				}
 			}
 		}
