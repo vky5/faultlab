@@ -287,3 +287,70 @@ func (r *Runtime) OnPeerDiscovered(peerID, peerHost string, peerPort int) {
 
 	r.applyPeersTopology(base, &protocol.NodeInfo{Id: peerID, Address: peerHost, Port: uint32(peerPort)})
 }
+
+// setter for the parameter of fault
+func (r *Runtime) SetFaultParams(params *protocol.FaultRequest) error {
+	if params == nil {
+		return fmt.Errorf("fault params request is nil")
+	}
+
+	if r.fault == nil {
+		return fmt.Errorf("fault engine is not initialized")
+	}
+
+	if params.GetNodeId() != "" && params.GetNodeId() != r.config.ID {
+		return fmt.Errorf("fault request node mismatch: got=%s want=%s", params.GetNodeId(), r.config.ID)
+	}
+
+	dropRate := params.GetDropRate()
+	if dropRate < 0 || dropRate > 1 {
+		return fmt.Errorf("drop_rate must be in range [0,1], got=%f", dropRate)
+	}
+
+	delayMs := params.GetDelayMs()
+	if delayMs < 0 {
+		return fmt.Errorf("delay_ms must be >= 0, got=%d", delayMs)
+	}
+
+	if params.GetCrashed() {
+		r.fault.Crash()
+	} else {
+		r.fault.Recover()
+	}
+
+	r.fault.SetDropRate(dropRate)
+	r.fault.SetDelay(int(delayMs))
+
+	// Treat request.partition as the desired partition set.
+	desired := make(map[string]struct{}, len(params.GetPartition()))
+	for _, id := range params.GetPartition() {
+		if id == "" || id == r.config.ID {
+			continue
+		}
+		desired[id] = struct{}{}
+	}
+
+	r.peersMu.RLock()
+	knownPeers := make([]string, 0, len(r.config.Peers))
+	for _, p := range r.config.Peers {
+		knownPeers = append(knownPeers, p.ID)
+	}
+	r.peersMu.RUnlock()
+
+	for _, id := range knownPeers {
+		if _, ok := desired[id]; ok {
+			r.fault.Partition(id)
+		} else {
+			r.fault.Heal(id)
+		}
+	}
+
+	// Also allow partitioning peers that are not currently in runtime config yet.
+	for id := range desired {
+		r.fault.Partition(id)
+	}
+
+	log.Printf("[runtime] fault params applied: crashed=%v drop_rate=%.3f delay_ms=%d partition=%v", params.GetCrashed(), dropRate, delayMs, params.GetPartition())
+
+	return nil
+}

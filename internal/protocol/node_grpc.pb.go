@@ -19,10 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	NodeService_Ping_FullMethodName         = "/protocol.NodeService/Ping"
-	NodeService_StopNode_FullMethodName     = "/protocol.NodeService/StopNode"
-	NodeService_Handshake_FullMethodName    = "/protocol.NodeService/Handshake"
-	NodeService_SendEnvelope_FullMethodName = "/protocol.NodeService/SendEnvelope"
+	NodeService_Ping_FullMethodName           = "/protocol.NodeService/Ping"
+	NodeService_StopNode_FullMethodName       = "/protocol.NodeService/StopNode"
+	NodeService_Handshake_FullMethodName      = "/protocol.NodeService/Handshake"
+	NodeService_SendEnvelope_FullMethodName   = "/protocol.NodeService/SendEnvelope"
+	NodeService_SetFaultParams_FullMethodName = "/protocol.NodeService/SetFaultParams"
 )
 
 // NodeServiceClient is the client API for NodeService service.
@@ -33,6 +34,7 @@ type NodeServiceClient interface {
 	StopNode(ctx context.Context, in *RemoveNodeRequest, opts ...grpc.CallOption) (*RemoveNodeResponse, error)
 	Handshake(ctx context.Context, in *HandshakeRequest, opts ...grpc.CallOption) (*HandshakeResponse, error)
 	SendEnvelope(ctx context.Context, in *EnvelopeRequest, opts ...grpc.CallOption) (*EnvelopeAck, error)
+	SetFaultParams(ctx context.Context, in *FaultRequest, opts ...grpc.CallOption) (*FaultResponse, error)
 }
 
 type nodeServiceClient struct {
@@ -83,6 +85,16 @@ func (c *nodeServiceClient) SendEnvelope(ctx context.Context, in *EnvelopeReques
 	return out, nil
 }
 
+func (c *nodeServiceClient) SetFaultParams(ctx context.Context, in *FaultRequest, opts ...grpc.CallOption) (*FaultResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FaultResponse)
+	err := c.cc.Invoke(ctx, NodeService_SetFaultParams_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NodeServiceServer is the server API for NodeService service.
 // All implementations must embed UnimplementedNodeServiceServer
 // for forward compatibility.
@@ -91,6 +103,7 @@ type NodeServiceServer interface {
 	StopNode(context.Context, *RemoveNodeRequest) (*RemoveNodeResponse, error)
 	Handshake(context.Context, *HandshakeRequest) (*HandshakeResponse, error)
 	SendEnvelope(context.Context, *EnvelopeRequest) (*EnvelopeAck, error)
+	SetFaultParams(context.Context, *FaultRequest) (*FaultResponse, error)
 	mustEmbedUnimplementedNodeServiceServer()
 }
 
@@ -112,6 +125,9 @@ func (UnimplementedNodeServiceServer) Handshake(context.Context, *HandshakeReque
 }
 func (UnimplementedNodeServiceServer) SendEnvelope(context.Context, *EnvelopeRequest) (*EnvelopeAck, error) {
 	return nil, status.Error(codes.Unimplemented, "method SendEnvelope not implemented")
+}
+func (UnimplementedNodeServiceServer) SetFaultParams(context.Context, *FaultRequest) (*FaultResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetFaultParams not implemented")
 }
 func (UnimplementedNodeServiceServer) mustEmbedUnimplementedNodeServiceServer() {}
 func (UnimplementedNodeServiceServer) testEmbeddedByValue()                     {}
@@ -206,6 +222,24 @@ func _NodeService_SendEnvelope_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NodeService_SetFaultParams_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FaultRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServiceServer).SetFaultParams(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeService_SetFaultParams_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServiceServer).SetFaultParams(ctx, req.(*FaultRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NodeService_ServiceDesc is the grpc.ServiceDesc for NodeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -228,6 +262,10 @@ var NodeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SendEnvelope",
 			Handler:    _NodeService_SendEnvelope_Handler,
+		},
+		{
+			MethodName: "SetFaultParams",
+			Handler:    _NodeService_SetFaultParams_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

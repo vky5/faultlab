@@ -13,6 +13,7 @@ type noderuntime interface { // this is what runtime implements  check runtime.g
 	Stop()
 	HandleEnvelope(env *protocol.EnvelopeRequest)
 	IsCrashed() bool
+	SetFaultParams(params *protocol.FaultRequest) error
 }
 
 type NodeRPCServer struct {
@@ -88,5 +89,29 @@ func (n *NodeRPCServer) SendEnvelope(
 	return &protocol.EnvelopeAck{
 		Success: true,
 		Message: "delivered",
+	}, nil
+}
+
+func (n *NodeRPCServer) SetFaultParams(
+	ctx context.Context,
+	req *protocol.FaultRequest,
+) (*protocol.FaultResponse, error) {
+	if req == nil {
+		return &protocol.FaultResponse{
+			Success: false,
+			Message: "nil fault request",
+		}, nil
+	}
+
+	if err := n.nc.SetFaultParams(req); err != nil {
+		return &protocol.FaultResponse{
+			Success: false,
+			Message: err.Error(),
+		}, nil
+	}
+
+	return &protocol.FaultResponse{
+		Success: true,
+		Message: "fault parameters applied",
 	}, nil
 }

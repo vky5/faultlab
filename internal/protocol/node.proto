@@ -10,6 +10,8 @@ service NodeService {
   rpc Handshake(HandshakeRequest) returns (HandshakeResponse);
 
   rpc SendEnvelope (EnvelopeRequest) returns (EnvelopeAck); // generic protocol for sending message
+  
+  rpc SetFaultParams(FaultRequest) returns (FaultResponse);
 }
 
 message EnvelopeRequest {
@@ -51,4 +53,17 @@ message RemoveNodeRequest {
 
 message RemoveNodeResponse {
   string message = 1;
+}
+
+message FaultRequest {
+  bool            crashed   = 2;
+  string          node_id   = 1;
+  double          drop_rate = 3;
+  int32           delay_ms  = 4;
+  repeated string partition = 5;
+}
+
+message FaultResponse {
+  bool   success = 1;
+  string message = 2;
 }

@@ -445,6 +445,134 @@ func (x *RemoveNodeResponse) GetMessage() string {
 	return ""
 }
 
+type FaultRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Crashed       bool                   `protobuf:"varint,2,opt,name=crashed,proto3" json:"crashed,omitempty"`
+	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	DropRate      float64                `protobuf:"fixed64,3,opt,name=drop_rate,json=dropRate,proto3" json:"drop_rate,omitempty"`
+	DelayMs       int32                  `protobuf:"varint,4,opt,name=delay_ms,json=delayMs,proto3" json:"delay_ms,omitempty"`
+	Partition     []string               `protobuf:"bytes,5,rep,name=partition,proto3" json:"partition,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FaultRequest) Reset() {
+	*x = FaultRequest{}
+	mi := &file_internal_protocol_node_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FaultRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FaultRequest) ProtoMessage() {}
+
+func (x *FaultRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_protocol_node_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FaultRequest.ProtoReflect.Descriptor instead.
+func (*FaultRequest) Descriptor() ([]byte, []int) {
+	return file_internal_protocol_node_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *FaultRequest) GetCrashed() bool {
+	if x != nil {
+		return x.Crashed
+	}
+	return false
+}
+
+func (x *FaultRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *FaultRequest) GetDropRate() float64 {
+	if x != nil {
+		return x.DropRate
+	}
+	return 0
+}
+
+func (x *FaultRequest) GetDelayMs() int32 {
+	if x != nil {
+		return x.DelayMs
+	}
+	return 0
+}
+
+func (x *FaultRequest) GetPartition() []string {
+	if x != nil {
+		return x.Partition
+	}
+	return nil
+}
+
+type FaultResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FaultResponse) Reset() {
+	*x = FaultResponse{}
+	mi := &file_internal_protocol_node_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FaultResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FaultResponse) ProtoMessage() {}
+
+func (x *FaultResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_protocol_node_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FaultResponse.ProtoReflect.Descriptor instead.
+func (*FaultResponse) Descriptor() ([]byte, []int) {
+	return file_internal_protocol_node_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *FaultResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *FaultResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
 var File_internal_protocol_node_proto protoreflect.FileDescriptor
 
 const file_internal_protocol_node_proto_rawDesc = "" +
@@ -476,12 +604,22 @@ const file_internal_protocol_node_proto_rawDesc = "" +
 	"cluster_id\x18\x01 \x01(\tR\tclusterId\x12\x17\n" +
 	"\anode_id\x18\x02 \x01(\tR\x06nodeId\".\n" +
 	"\x12RemoveNodeResponse\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessage2\x93\x02\n" +
+	"\amessage\x18\x01 \x01(\tR\amessage\"\x97\x01\n" +
+	"\fFaultRequest\x12\x18\n" +
+	"\acrashed\x18\x02 \x01(\bR\acrashed\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x1b\n" +
+	"\tdrop_rate\x18\x03 \x01(\x01R\bdropRate\x12\x19\n" +
+	"\bdelay_ms\x18\x04 \x01(\x05R\adelayMs\x12\x1c\n" +
+	"\tpartition\x18\x05 \x03(\tR\tpartition\"C\n" +
+	"\rFaultResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage2\xd6\x02\n" +
 	"\vNodeService\x125\n" +
 	"\x04Ping\x12\x15.protocol.PingRequest\x1a\x16.protocol.PingResponse\x12E\n" +
 	"\bStopNode\x12\x1b.protocol.RemoveNodeRequest\x1a\x1c.protocol.RemoveNodeResponse\x12D\n" +
 	"\tHandshake\x12\x1a.protocol.HandshakeRequest\x1a\x1b.protocol.HandshakeResponse\x12@\n" +
-	"\fSendEnvelope\x12\x19.protocol.EnvelopeRequest\x1a\x15.protocol.EnvelopeAckB\x1cZ\x1afaultlab/internal/protocolb\x06proto3"
+	"\fSendEnvelope\x12\x19.protocol.EnvelopeRequest\x1a\x15.protocol.EnvelopeAck\x12A\n" +
+	"\x0eSetFaultParams\x12\x16.protocol.FaultRequest\x1a\x17.protocol.FaultResponseB\x1cZ\x1afaultlab/internal/protocolb\x06proto3"
 
 var (
 	file_internal_protocol_node_proto_rawDescOnce sync.Once
@@ -495,7 +633,7 @@ func file_internal_protocol_node_proto_rawDescGZIP() []byte {
 	return file_internal_protocol_node_proto_rawDescData
 }
 
-var file_internal_protocol_node_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_internal_protocol_node_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_internal_protocol_node_proto_goTypes = []any{
 	(*EnvelopeRequest)(nil),    // 0: protocol.EnvelopeRequest
 	(*EnvelopeAck)(nil),        // 1: protocol.EnvelopeAck
@@ -505,18 +643,22 @@ var file_internal_protocol_node_proto_goTypes = []any{
 	(*PingResponse)(nil),       // 5: protocol.PingResponse
 	(*RemoveNodeRequest)(nil),  // 6: protocol.RemoveNodeRequest
 	(*RemoveNodeResponse)(nil), // 7: protocol.RemoveNodeResponse
+	(*FaultRequest)(nil),       // 8: protocol.FaultRequest
+	(*FaultResponse)(nil),      // 9: protocol.FaultResponse
 }
 var file_internal_protocol_node_proto_depIdxs = []int32{
 	4, // 0: protocol.NodeService.Ping:input_type -> protocol.PingRequest
 	6, // 1: protocol.NodeService.StopNode:input_type -> protocol.RemoveNodeRequest
 	2, // 2: protocol.NodeService.Handshake:input_type -> protocol.HandshakeRequest
 	0, // 3: protocol.NodeService.SendEnvelope:input_type -> protocol.EnvelopeRequest
-	5, // 4: protocol.NodeService.Ping:output_type -> protocol.PingResponse
-	7, // 5: protocol.NodeService.StopNode:output_type -> protocol.RemoveNodeResponse
-	3, // 6: protocol.NodeService.Handshake:output_type -> protocol.HandshakeResponse
-	1, // 7: protocol.NodeService.SendEnvelope:output_type -> protocol.EnvelopeAck
-	4, // [4:8] is the sub-list for method output_type
-	0, // [0:4] is the sub-list for method input_type
+	8, // 4: protocol.NodeService.SetFaultParams:input_type -> protocol.FaultRequest
+	5, // 5: protocol.NodeService.Ping:output_type -> protocol.PingResponse
+	7, // 6: protocol.NodeService.StopNode:output_type -> protocol.RemoveNodeResponse
+	3, // 7: protocol.NodeService.Handshake:output_type -> protocol.HandshakeResponse
+	1, // 8: protocol.NodeService.SendEnvelope:output_type -> protocol.EnvelopeAck
+	9, // 9: protocol.NodeService.SetFaultParams:output_type -> protocol.FaultResponse
+	5, // [5:10] is the sub-list for method output_type
+	0, // [0:5] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -533,7 +675,7 @@ func file_internal_protocol_node_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_protocol_node_proto_rawDesc), len(file_internal_protocol_node_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

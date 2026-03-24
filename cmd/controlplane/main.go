@@ -93,4 +93,7 @@ func main() {
 		}
 		actor.Submit(cmd)
 	}
+
+	// If stdin is closed (e.g., when run in background), block forever so the servers keep running
+	select {}
 }
