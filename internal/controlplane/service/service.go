@@ -63,23 +63,22 @@ func (s *Service) RemoveNode(
 	return nil
 }
 
-
 // registering node
 func (s *Service) RegisterNode(
 	ctx context.Context,
 	clusterID, nodeID, host string,
-	port int, 
-)error {
+	port int,
+) error {
 	// verification policy (reachability + ping)
 	verifyCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
 	/*
-	so we are effectively saying min (ctx, verifyCtx)
+		so we are effectively saying min (ctx, verifyCtx)
 
-	- parent 10s + child 2s → child cancels at 2s
-	- parent 1s + child 2s → child cancels at 1s
-    
+		- parent 10s + child 2s → child cancels at 2s
+		- parent 1s + child 2s → child cancels at 1s
+
 	*/
 
 	if err := s.NodeClient.Ping(verifyCtx, host, port); err != nil {
@@ -88,14 +87,18 @@ func (s *Service) RegisterNode(
 
 	// update cluster state
 	s.cluster.RegisterNode(clusterID, nodeID, host, port)
-	
+
 	return nil
 }
 
 func (s *Service) GetPeers(clusterID string) ([]cluster.Node, error) {
-    return s.cluster.GetNodes(clusterID)
+	return s.cluster.GetNodes(clusterID)
 }
 
 func (s *Service) Heartbeat(clusterID, nodeID string) error {
-    return s.cluster.Heartbeat(clusterID, nodeID)
+	return s.cluster.Heartbeat(clusterID, nodeID)
+}
+
+func (s *Service) SetFaultParams(clusterID, nodeID string, fault cluster.FaultState) error {
+	return s.cluster.SetFaultParams(clusterID, nodeID, fault)
 }

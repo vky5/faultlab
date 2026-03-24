@@ -17,6 +17,7 @@ import (
 	"github.com/vky5/faultlab/internal/controlplane/rest"
 	controlplanerpc "github.com/vky5/faultlab/internal/controlplane/rpc"
 	controlplanesvc "github.com/vky5/faultlab/internal/controlplane/service"
+	controlplanesession "github.com/vky5/faultlab/internal/controlplane/session"
 	pb "github.com/vky5/faultlab/internal/protocol"
 )
 
@@ -32,7 +33,8 @@ func main() {
 	flag.Parse()
 
 	// ---- core components ----
-	manager := clustermanager.NewManager()
+	nodeSession := controlplanesession.NewNodeSession(3 * time.Second)
+	manager := clustermanager.NewManager(nodeSession)
 	nodeClient := controlplanerpc.NewNodeClient(3 * time.Second)
 
 	go manager.Cleanup(*heartbeatTimeout)
@@ -83,7 +85,14 @@ func main() {
 	// ---- CLI command loop ----
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Println("control plane ready for commands")
-	fmt.Println("Commands: new-cluster <id> <protocol>, add-node <cluster> <node> <host> <port>, list-nodes <cluster>, remove-node <cluster> <node>")
+	fmt.Println("Commands:")
+	fmt.Println("  new-cluster <cluster-id> [protocol]")
+	fmt.Println("  add-node <cluster-id> <node-id> <host> <port>")
+	fmt.Println("  remove-node <cluster-id> <node-id>")
+	fmt.Println("  list-nodes <cluster-id>")
+	fmt.Println("  list-clusters")
+	fmt.Println("  set-fault <cluster-id> <node-id> <crashed:true|false> <drop-rate:0..1> <delay-ms:int> [partition-csv]")
+	fmt.Println("  help")
 	for scanner.Scan() {
 		input := scanner.Text()
 		cmd, err := controlplane.Parse(input)

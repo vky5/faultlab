@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/vky5/faultlab/internal/cluster"
 	clustermanager "github.com/vky5/faultlab/internal/cluster/manager"
 	controlplanesvc "github.com/vky5/faultlab/internal/controlplane/service"
 )
@@ -75,10 +76,10 @@ func (a *Actor) Run() {
 				fmt.Println(n.ID, n.Address, n.Port)
 			}
 			cmd.Reply(nodes, nil)
-			
+
 		case CmdListClusters:
 			clusterIDs := a.manager.GetClusters()
-			
+
 			type NodeInfo struct {
 				ID      string `json:"id"`
 				Address string `json:"address"`
@@ -89,25 +90,55 @@ func (a *Actor) Run() {
 				Protocol string     `json:"protocol"`
 				Nodes    []NodeInfo `json:"nodes"`
 			}
-		
+
 			resp := []ClusterInfo{}
 			for _, id := range clusterIDs {
 				nodes, err := a.manager.GetNodes(id)
-				if err != nil { continue }
-				
+				if err != nil {
+					continue
+				}
+
 				var ni []NodeInfo
 				for _, node := range nodes {
-					ni = append(ni, NodeInfo{ ID: node.ID, Address: node.Address, Port: node.Port })
+					ni = append(ni, NodeInfo{ID: node.ID, Address: node.Address, Port: node.Port})
 				}
-				
+
 				var protocol string
 				if c, err := a.manager.GetCluster(id); err == nil {
 					protocol = c.Protocol
 				}
-				
-				resp = append(resp, ClusterInfo{ ID: id, Protocol: protocol, Nodes: ni })
+
+				resp = append(resp, ClusterInfo{ID: id, Protocol: protocol, Nodes: ni})
 			}
 			cmd.Reply(resp, nil)
+
+		case CmdSetFaultParams:
+			fault := cluster.FaultState{
+				Crashed:   cmd.Crashed,
+				DropRate:  cmd.DropRate,
+				DelayMs:   cmd.DelayMs,
+				Partition: cmd.Partition,
+			}
+
+			err := a.service.SetFaultParams(cmd.ClusterID, cmd.NodeID, fault)
+			if err != nil {
+				log.Println("set fault params error:", err)
+				cmd.Reply(nil, err)
+				continue
+			}
+			cmd.Reply(map[string]any{"status": "ok"}, nil)
+
+		case CmdHelp:
+			help := []string{
+				"new-cluster <cluster-id> [protocol]",
+				"add-node <cluster-id> <node-id> <host> <port>",
+				"remove-node <cluster-id> <node-id>",
+				"list-nodes <cluster-id>",
+				"list-clusters",
+				"set-fault <cluster-id> <node-id> <crashed:true|false> <drop-rate:0..1> <delay-ms:int> [partition-csv]",
+				"help",
+			}
+			cmd.Reply(help, nil)
 		}
 	}
 }

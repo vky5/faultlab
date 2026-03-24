@@ -15,8 +15,13 @@ func Parse(input string) (Command, error) {
 	}
 
 	switch parts[0] {
+	case "help":
+		return Command{Type: CmdHelp}, nil
 
 	case "new-cluster":
+		if len(parts) < 2 {
+			return Command{}, fmt.Errorf("usage: new-cluster <cluster-id> [protocol]")
+		}
 		protocol := "gossip"
 		if len(parts) >= 3 {
 			protocol = parts[2]
@@ -28,6 +33,9 @@ func Parse(input string) (Command, error) {
 		}, nil
 
 	case "remove-node":
+		if len(parts) < 3 {
+			return Command{}, fmt.Errorf("usage: remove-node <cluster-id> <node-id>")
+		}
 		return Command{
 			Type:      CmdRemoveNode,
 			ClusterID: parts[1],
@@ -35,20 +43,70 @@ func Parse(input string) (Command, error) {
 		}, nil
 
 	case "list-nodes":
+		if len(parts) < 2 {
+			return Command{}, fmt.Errorf("usage: list-nodes <cluster-id>")
+		}
 		return Command{
 			Type:      CmdListNodes,
 			ClusterID: parts[1],
 		}, nil
 
+	case "list-clusters":
+		return Command{Type: CmdListClusters}, nil
+
 	case "add-node":
-		port, _ := strconv.Atoi(parts[4])
+		if len(parts) < 5 {
+			return Command{}, fmt.Errorf("usage: add-node <cluster-id> <node-id> <host> <port>")
+		}
+
+		port, err := strconv.Atoi(parts[4])
+		if err != nil {
+			return Command{}, fmt.Errorf("invalid port: %v", err)
+		}
 
 		return Command{
-			Type:      CmdCreateCluster,
+			Type:      CmdAddNode,
 			ClusterID: parts[1],
 			NodeID:    parts[2],
 			Host:      parts[3],
 			Port:      port,
+		}, nil
+
+	case "set-fault":
+		// usage:
+		// set-fault <cluster-id> <node-id> <crashed:true|false> <drop-rate:0..1> <delay-ms:int> [partition-csv]
+		if len(parts) < 6 {
+			return Command{}, fmt.Errorf("usage: set-fault <cluster-id> <node-id> <crashed:true|false> <drop-rate:0..1> <delay-ms:int> [partition-csv]")
+		}
+
+		crashed, err := strconv.ParseBool(parts[3])
+		if err != nil {
+			return Command{}, fmt.Errorf("invalid crashed flag: %v", err)
+		}
+
+		dropRate, err := strconv.ParseFloat(parts[4], 64)
+		if err != nil {
+			return Command{}, fmt.Errorf("invalid drop-rate: %v", err)
+		}
+
+		delayMs, err := strconv.Atoi(parts[5])
+		if err != nil {
+			return Command{}, fmt.Errorf("invalid delay-ms: %v", err)
+		}
+
+		var partition []string
+		if len(parts) >= 7 && strings.TrimSpace(parts[6]) != "" {
+			partition = strings.Split(parts[6], ",")
+		}
+
+		return Command{
+			Type:      CmdSetFaultParams,
+			ClusterID: parts[1],
+			NodeID:    parts[2],
+			Crashed:   crashed,
+			DropRate:  dropRate,
+			DelayMs:   delayMs,
+			Partition: partition,
 		}, nil
 	}
 

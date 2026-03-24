@@ -5,9 +5,11 @@ type CommandType int
 const (
 	CmdCreateCluster CommandType = iota
 	CmdAddNode
-	CmdRemoveNode 
+	CmdRemoveNode
 	CmdListNodes
 	CmdListClusters
+	CmdSetFaultParams
+	CmdHelp
 )
 
 type CommandResult struct {
@@ -15,20 +17,24 @@ type CommandResult struct {
 	Error error
 }
 
-type Command struct{
-	Type CommandType
+type Command struct {
+	Type      CommandType
 	ClusterID string
-	Protocol string
-	NodeID string
-	Host string
-	Port int
-	replyCh chan CommandResult
+	Protocol  string
+	NodeID    string
+	Host      string
+	Port      int
+	Crashed   bool
+	DropRate  float64
+	DelayMs   int
+	Partition []string
+	replyCh   chan CommandResult
 }
 
 // Init command with a reply channel
 func NewCommand(t CommandType) Command {
 	return Command{
-		Type: t,
+		Type:    t,
 		replyCh: make(chan CommandResult, 1),
 	}
 }
