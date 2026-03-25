@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/vky5/faultlab/internal/fault"
+	"github.com/vky5/faultlab/internal/node/exec"
 	"github.com/vky5/faultlab/internal/node/protocol"
 )
 
@@ -14,19 +14,19 @@ type ProtocolDriver struct {
 	stopCh       chan struct{} // thsi syntax is for signal only channel (not for data) using int or any other means u are expecting data nd also will take memory
 	eventCh      chan<- RuntimeEvent
 
-	fault *fault.Engine
+	fault exec.FaultDecider
 }
 
 func NewProtocolDriver(
 	tickInterval time.Duration,
 	eventCh chan<- RuntimeEvent,
-	fe *fault.Engine,
+	faultDecider exec.FaultDecider,
 ) *ProtocolDriver {
 	return &ProtocolDriver{
 		tickInterval: tickInterval,
 		stopCh:       make(chan struct{}),
 		eventCh:      eventCh,
-		fault:        fe,
+		fault:        faultDecider,
 	}
 }
 
@@ -45,10 +45,9 @@ func (d *ProtocolDriver) Run(ctx context.Context, proto protocol.ClusterProtocol
 	for {
 		select {
 		case <-ticker.C:
-			if d.fault != nil && d.fault.IsCrashed() {
+			if d.fault != nil && !d.fault.BeforeTick() {
 				continue
 			}
-
 			d.eventCh <- RuntimeEvent{
 				Type: EventTick,
 			}

@@ -33,7 +33,7 @@ type Runtime struct {
 
 	eventCh chan RuntimeEvent
 
-	fault *fault.Engine // inject the faults in the same node's runtime
+	fault  *fault.Engine // inject the faults in the same node's runtime
 	logger *Logger
 }
 
@@ -72,7 +72,7 @@ func (r *Runtime) Start(fe *fault.Engine) {
 		// func(ctx context.Context, env proto.Envelope) {
 		// 	r.ns.Send(ctx, env)
 		// },
-		fe,
+		r,
 	)
 
 	r.driver = driver
@@ -145,11 +145,6 @@ func (r *Runtime) Stop() {
 	if r.server != nil {
 		r.server.GracefulStop() // closing grpc server
 	}
-}
-
-// IsCrashed reports whether this node is currently fault-injected as crashed.
-func (r *Runtime) IsCrashed() bool {
-	return r.fault != nil && r.fault.IsCrashed()
 }
 
 /*
@@ -244,28 +239,6 @@ func (r *Runtime) HandleEnvelope(req *protocol.EnvelopeRequest) {
 		Msg:  &env,
 	}
 }
-
-/*
-we are using service at controlplane because we are taking the decioion from cli like starting new node or stuff like that
-but here the node is like and independent process that needs to be executed.
-*/
-
-/*
-Protocol.Tick()
-   → returns []Envelope
-Runtime
-   → calls NodeSession.Send(env)
-NodeSession
-   → gRPC send
-Peer RPC server
-   → Runtime.HandleEnvelope(env)
-Runtime
-   → proto.OnMessage(env)
-   → maybe emits response envelopes
-   → NodeSession.Send again
-
-basically only one session at a time and that's it
-*/
 
 // OnPeerDiscovered receives dynamically discovered peers from the protocol.
 func (r *Runtime) OnPeerDiscovered(peerID, peerHost string, peerPort int) {

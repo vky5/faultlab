@@ -133,7 +133,7 @@ func (r *Runtime) getPeersFromControlplane(parentCtx context.Context) error {
 
 // sendHeartbeatToControlPlane reports liveness.
 func (r *Runtime) sendHeartbeatToControlPlane(parentCtx context.Context) error {
-	if r.IsCrashed() {
+	if !r.BeforeTick() {
 		r.logger.Printf("heartbeat skipped: node is crashed")
 		return nil
 	}

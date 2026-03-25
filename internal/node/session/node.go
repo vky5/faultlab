@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vky5/faultlab/internal/node/exec"
 	proto "github.com/vky5/faultlab/internal/node/protocol"
 	noderuntime "github.com/vky5/faultlab/internal/node/runtime"
 	"github.com/vky5/faultlab/internal/protocol"
@@ -58,7 +59,7 @@ type nodeSession struct {
 
 	probeInterval time.Duration // TODO check if we need runtime to handle this or this is better. If this is better strategy, implement something similar for controlplane session as well
 
-	fault FaultProvider
+	fault exec.FaultDecider
 }
 
 // sending message to other node (doesnt check for should connect)
@@ -73,24 +74,13 @@ func (ns *nodeSession) Send(ctx context.Context, env proto.Envelope) error {
 
 	// ---------- FAULT INJECTION ----------
 	if ns.fault != nil {
-
-		// process crash → node silent
-		if ns.fault.IsCrashed() {
+		decision := ns.fault.BeforeSend(ps.id)
+		if !decision.Allow {
 			return nil
 		}
-
-		// network partition → cannot reach this peer
-		if ns.fault.IsPartitioned(ps.id) {
-			return nil
+		if decision.Delay > 0 {
+			time.Sleep(decision.Delay)
 		}
-
-		// probabilistic packet drop
-		if ns.fault.ShouldDrop() {
-			return nil
-		}
-
-		// artificial latency
-		ns.fault.ApplyDelay()
 	}
 	// ---------- END FAULT ----------
 
@@ -143,7 +133,7 @@ func (ns *nodeSession) Start(ctx context.Context) {
 			ns.closeAllConnections()
 			return
 		case <-ticker.C:
-			if ns.fault != nil && ns.fault.IsCrashed() {
+			if ns.fault != nil && !ns.fault.BeforeTick() {
 				continue
 			}
 			ns.probeOnce(ctx) // send ping to all peers and updatre peer state accordingly
@@ -162,13 +152,8 @@ func (ns *nodeSession) probeOnce(ctx context.Context) {
 
 	logSessionf("[node:%s] probing %d peers...\n", ns.nodeID, len(peers))
 	for _, ps := range peers {
-		if ns.fault != nil {
-			if ns.fault.IsCrashed() {
-				return
-			}
-			if ns.fault.IsPartitioned(ps.id) {
-				continue
-			}
+		if ns.fault != nil && !ns.fault.BeforeProbe(ps.id) {
+			continue
 		}
 		// deterministic dialing: only owner initiates probes
 		if !shouldDial(ns.nodeID, ps.id) {
@@ -351,7 +336,7 @@ func shouldDial(self, peer string) bool {
 }
 
 // NewNodeSession creates a new node session for peer interactions
-func NewNodeSession(nodeAddr string, nodeID string, nodePort int, fault FaultProvider) noderuntime.NodeSession {
+func NewNodeSession(nodeAddr string, nodeID string, nodePort int, fault exec.FaultDecider) noderuntime.NodeSession {
 	return &nodeSession{
 		nodeID:        nodeID,
 		nodePort:      nodePort,

@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+// Engine owns fault state.
+// These APIs are used by runtime/controlplane to set and read core fault parameters.
 type Engine struct {
 	crashed    bool
 	dropRate   float64
@@ -39,7 +41,6 @@ func (e *Engine) IsCrashed() bool {
 	return e.crashed
 }
 
-
 // Drop model
 func (e *Engine) SetDropRate(p float64) {
 	e.mu.Lock()
@@ -53,7 +54,6 @@ func (e *Engine) ShouldDrop() bool {
 	e.mu.RUnlock()
 	return rand.Float64() < p
 }
-
 
 // Delay model
 func (e *Engine) SetDelay(ms int) {
@@ -69,6 +69,13 @@ func (e *Engine) ApplyDelay() {
 	if d > 0 {
 		time.Sleep(time.Duration(d) * time.Millisecond)
 	}
+}
+
+func (e *Engine) GetDelay() time.Duration {
+	e.mu.RLock()
+	d := e.delayMs
+	e.mu.RUnlock()
+	return time.Duration(d) * time.Millisecond
 }
 
 // Partition model
