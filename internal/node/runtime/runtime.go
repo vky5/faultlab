@@ -202,6 +202,7 @@ func (r *Runtime) sendEnvelope(env *proto.Envelope) {
 
 		r.logger.Printf("broadcast %s from %s to %d peers", env.Protocol, env.From, len(peers))
 		for _, peerID := range peers {
+			r.logger.Printf("TRACE:SEND:%s:%s", env.From, peerID)
 			unicast := &proto.Envelope{
 				From:     env.From,
 				To:       peerID,
@@ -217,6 +218,7 @@ func (r *Runtime) sendEnvelope(env *proto.Envelope) {
 	}
 
 	// Unicast: send to specific peer
+	r.logger.Printf("TRACE:SEND:%s:%s", env.From, env.To)
 	if err := r.ns.Send(r.ctx, *env); err != nil {
 		r.logger.Printf("send to %s failed: %v", env.To, err)
 	}

@@ -87,9 +87,12 @@ func (s *Server) ReportLog(
 	req *pb.LogRequest,
 ) (*pb.LogResponse, error) {
 
-	// For Phase 4, we just blindly print it to verify the pipe works.
+	// Provide visual trace in the control plane directly
 	fmt.Printf("[ControlPlane Intercept] Node: %s | [%s] %s\n",
 		req.NodeId, req.Level, req.Message)
+
+	// Stream to any active SSE listeners mapping UI visuals
+	s.svc.BroadcastLog(req)
 
 	return &pb.LogResponse{Ok: true}, nil
 }

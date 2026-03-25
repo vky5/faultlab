@@ -2,6 +2,7 @@ package rest
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -100,6 +101,9 @@ func (s *Server) HandleNodes(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost && len(parts) == 5 {
 		s.addNode(w, r, clusterID)
+		return
+	} else if r.Method == http.MethodGet && len(parts) == 5 && parts[4] == "logs" {
+		s.streamLogs(w, r, clusterID)
 		return
 	} else if r.Method == http.MethodDelete && len(parts) == 6 {
 		nodeID := parts[5]
@@ -206,4 +210,38 @@ func (s *Server) heartbeat(w http.ResponseWriter, r *http.Request, clusterID, no
 	// For simplicity, returning OK. If heartbeats need the actor, we'd add CmdHeartbeat.
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func (s *Server) streamLogs(w http.ResponseWriter, r *http.Request, clusterID string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	enableCORS(w)
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	ch := s.actor.SubscribeLogs()
+	defer s.actor.UnsubscribeLogs(ch)
+
+	for {
+		select {
+		case <-r.Context().Done():
+			// client disconnected
+			return
+		case logEntry, ok := <-ch:
+			if !ok {
+				// channel closed
+				return
+			}
+			if logEntry.ClusterId == clusterID {
+				data, _ := json.Marshal(logEntry)
+				fmt.Fprintf(w, "data: %s\n\n", data)
+				flusher.Flush()
+			}
+		}
+	}
 }

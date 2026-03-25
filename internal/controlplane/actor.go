@@ -8,6 +8,7 @@ import (
 	"github.com/vky5/faultlab/internal/cluster"
 	clustermanager "github.com/vky5/faultlab/internal/cluster/manager"
 	controlplanesvc "github.com/vky5/faultlab/internal/controlplane/service"
+	pb "github.com/vky5/faultlab/internal/protocol"
 )
 
 type Actor struct {
@@ -28,6 +29,15 @@ func NewActor(manager *clustermanager.Manager, service *controlplanesvc.Service)
 // taking input of commands in command channel
 func (a *Actor) Submit(cmd Command) {
 	a.cmdCh <- cmd
+}
+
+// Bridges directly to the service for SSE log streaming (does not use command actor channel loop)
+func (a *Actor) SubscribeLogs() chan *pb.LogRequest {
+	return a.service.SubscribeLogs()
+}
+
+func (a *Actor) UnsubscribeLogs(ch chan *pb.LogRequest) {
+	a.service.UnsubscribeLogs(ch)
 }
 
 // single executionre point for the incoming commands

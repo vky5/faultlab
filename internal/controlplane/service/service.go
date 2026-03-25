@@ -8,12 +8,17 @@ import (
 
 	"github.com/vky5/faultlab/internal/cluster"
 	clustermanager "github.com/vky5/faultlab/internal/cluster/manager"
+	"github.com/vky5/faultlab/internal/protocol"
+	"sync"
 )
 
 type Service struct {
 	cluster *clustermanager.Manager
 	// NodeClient *controlplanerpc.NodeClient // ? this is hard dependency and it exposes the APIs of the Proto directly to service, we just need to call the function that's why this abstraction is necessary
 	NodeClient NodeOperator
+
+	logMu       sync.RWMutex
+	logListeners map[chan *protocol.LogRequest]struct{}
 }
 
 /*
@@ -26,8 +31,9 @@ Cluster Manager       ← memory
 
 func NewClusterService(cluster *clustermanager.Manager, nodeClient NodeOperator) *Service {
 	return &Service{
-		cluster:    cluster,
-		NodeClient: nodeClient,
+		cluster:      cluster,
+		NodeClient:   nodeClient,
+		logListeners: make(map[chan *protocol.LogRequest]struct{}),
 	}
 }
 
@@ -101,4 +107,37 @@ func (s *Service) Heartbeat(clusterID, nodeID string) error {
 
 func (s *Service) SetFaultParams(clusterID, nodeID string, fault cluster.FaultState) error {
 	return s.cluster.SetFaultParams(clusterID, nodeID, fault)
+}
+
+// SubscribeLogs registers a new SSE client for logs
+func (s *Service) SubscribeLogs() chan *protocol.LogRequest {
+	ch := make(chan *protocol.LogRequest, 100)
+	s.logMu.Lock()
+	s.logListeners[ch] = struct{}{}
+	s.logMu.Unlock()
+	return ch
+}
+
+// UnsubscribeLogs unregisters an SSE client cleanly
+func (s *Service) UnsubscribeLogs(ch chan *protocol.LogRequest) {
+	s.logMu.Lock()
+	if _, ok := s.logListeners[ch]; ok {
+		delete(s.logListeners, ch)
+		close(ch)
+	}
+	s.logMu.Unlock()
+}
+
+// BroadcastLog fires a log event to all connected UI clients
+func (s *Service) BroadcastLog(req *protocol.LogRequest) {
+	s.logMu.RLock()
+	defer s.logMu.RUnlock()
+
+	for ch := range s.logListeners {
+		select {
+		case ch <- req:
+		default:
+			// slow consumer, drop log to avoid blocking the orchestrator
+		}
+	}
 }
