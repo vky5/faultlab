@@ -1,5 +1,6 @@
-frontend
 *.log
 *.sh
 controlplane
 node
+node_modules
+dist
