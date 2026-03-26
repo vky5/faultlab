@@ -9,6 +9,11 @@ const (
 	CmdListNodes
 	CmdListClusters
 	CmdSetFaultParams
+	CmdCrashNode
+	CmdRecoverNode
+	CmdSetDropRate
+	CmdSetDelay
+	CmdSetPartition
 	CmdHelp
 )
 
@@ -28,6 +33,8 @@ type Command struct {
 	DropRate  float64
 	DelayMs   int
 	Partition []string
+	PeerID    string
+	Enabled   bool
 	replyCh   chan CommandResult
 }
 

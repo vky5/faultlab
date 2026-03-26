@@ -91,9 +91,11 @@ func (a *Actor) Run() {
 			clusterIDs := a.manager.GetClusters()
 
 			type NodeInfo struct {
-				ID      string `json:"id"`
-				Address string `json:"address"`
-				Port    int    `json:"port"`
+				ID      string             `json:"id"`
+				Address string             `json:"address"`
+				Port    int                `json:"port"`
+				Status  string             `json:"status,omitempty"`
+				Fault   cluster.FaultState `json:"fault"`
 			}
 			type ClusterInfo struct {
 				ID       string     `json:"id"`
@@ -110,7 +112,13 @@ func (a *Actor) Run() {
 
 				var ni []NodeInfo
 				for _, node := range nodes {
-					ni = append(ni, NodeInfo{ID: node.ID, Address: node.Address, Port: node.Port})
+					ni = append(ni, NodeInfo{
+						ID:      node.ID,
+						Address: node.Address,
+						Port:    node.Port,
+						Status:  node.Status,
+						Fault:   node.Fault,
+					})
 				}
 
 				var protocol string
@@ -138,6 +146,91 @@ func (a *Actor) Run() {
 			}
 			cmd.Reply(map[string]any{"status": "ok"}, nil)
 
+		case CmdCrashNode:
+			n, err := a.manager.GetNode(cmd.ClusterID, cmd.NodeID)
+			if err != nil {
+				cmd.Reply(nil, err)
+				continue
+			}
+			fault := n.Fault
+			fault.Crashed = true
+			if err := a.service.SetFaultParams(cmd.ClusterID, cmd.NodeID, fault); err != nil {
+				cmd.Reply(nil, err)
+				continue
+			}
+			cmd.Reply(map[string]any{"status": "ok"}, nil)
+
+		case CmdRecoverNode:
+			n, err := a.manager.GetNode(cmd.ClusterID, cmd.NodeID)
+			if err != nil {
+				cmd.Reply(nil, err)
+				continue
+			}
+			fault := n.Fault
+			fault.Crashed = false
+			if err := a.service.SetFaultParams(cmd.ClusterID, cmd.NodeID, fault); err != nil {
+				cmd.Reply(nil, err)
+				continue
+			}
+			cmd.Reply(map[string]any{"status": "ok"}, nil)
+
+		case CmdSetDropRate:
+			n, err := a.manager.GetNode(cmd.ClusterID, cmd.NodeID)
+			if err != nil {
+				cmd.Reply(nil, err)
+				continue
+			}
+			fault := n.Fault
+			fault.DropRate = cmd.DropRate
+			if err := a.service.SetFaultParams(cmd.ClusterID, cmd.NodeID, fault); err != nil {
+				cmd.Reply(nil, err)
+				continue
+			}
+			cmd.Reply(map[string]any{"status": "ok"}, nil)
+
+		case CmdSetDelay:
+			n, err := a.manager.GetNode(cmd.ClusterID, cmd.NodeID)
+			if err != nil {
+				cmd.Reply(nil, err)
+				continue
+			}
+			fault := n.Fault
+			fault.DelayMs = cmd.DelayMs
+			if err := a.service.SetFaultParams(cmd.ClusterID, cmd.NodeID, fault); err != nil {
+				cmd.Reply(nil, err)
+				continue
+			}
+			cmd.Reply(map[string]any{"status": "ok"}, nil)
+
+		case CmdSetPartition:
+			n, err := a.manager.GetNode(cmd.ClusterID, cmd.NodeID)
+			if err != nil {
+				cmd.Reply(nil, err)
+				continue
+			}
+			fault := n.Fault
+			next := make([]string, 0, len(fault.Partition)+1)
+			seen := false
+			for _, peer := range fault.Partition {
+				if peer == cmd.PeerID {
+					seen = true
+					if cmd.Enabled {
+						next = append(next, peer)
+					}
+					continue
+				}
+				next = append(next, peer)
+			}
+			if cmd.Enabled && !seen {
+				next = append(next, cmd.PeerID)
+			}
+			fault.Partition = next
+			if err := a.service.SetFaultParams(cmd.ClusterID, cmd.NodeID, fault); err != nil {
+				cmd.Reply(nil, err)
+				continue
+			}
+			cmd.Reply(map[string]any{"status": "ok"}, nil)
+
 		case CmdHelp:
 			help := []string{
 				"new-cluster <cluster-id> [protocol]",
@@ -146,6 +239,11 @@ func (a *Actor) Run() {
 				"list-nodes <cluster-id>",
 				"list-clusters",
 				"set-fault <cluster-id> <node-id> <crashed:true|false> <drop-rate:0..1> <delay-ms:int> [partition-csv]",
+				"fault-crash <cluster-id> <node-id>",
+				"fault-recover <cluster-id> <node-id>",
+				"fault-drop <cluster-id> <node-id> <drop-rate:0..1>",
+				"fault-delay <cluster-id> <node-id> <delay-ms:int>",
+				"fault-partition <cluster-id> <node-id> <peer-id> <enabled:true|false>",
 				"help",
 			}
 			cmd.Reply(help, nil)

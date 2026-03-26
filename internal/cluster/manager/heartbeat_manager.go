@@ -25,7 +25,7 @@ func (m *Manager) Heartbeat(clusterID, nodeID string) error {
 	return nil
 }
 
-// Cleanup marks nodes dead when heartbeat timeout is exceeded.
+// Cleanup removes nodes when heartbeat timeout is exceeded.
 func (m *Manager) Cleanup(timeout time.Duration) {
 	for {
 		time.Sleep(timeout)
@@ -34,8 +34,17 @@ func (m *Manager) Cleanup(timeout time.Duration) {
 		for _, clusterState := range m.clusters {
 			for id, node := range clusterState.Nodes {
 				if time.Since(node.LastSeen) > timeout {
-					node.Status = "dead"
-					clusterState.Nodes[id] = node
+					// Only remove if not artificially crashed
+					// If node.Fault.Crashed is true, node is still running but fault-injected
+					// If node.Fault.Crashed is false, node is actually dead
+					if !node.Fault.Crashed {
+						// Node is actually dead (Ctrl+C or crash), remove it
+						delete(clusterState.Nodes, id)
+					} else {
+						// Node is artificially crashed but still running, keep it
+						node.Status = "crashed"
+						clusterState.Nodes[id] = node
+					}
 				}
 			}
 		}

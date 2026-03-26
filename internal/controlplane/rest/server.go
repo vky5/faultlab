@@ -113,6 +113,10 @@ func (s *Server) HandleNodes(w http.ResponseWriter, r *http.Request) {
 		nodeID := parts[5]
 		s.setFault(w, r, clusterID, nodeID)
 		return
+	} else if r.Method == http.MethodPost && len(parts) == 8 && parts[6] == "faults" {
+		nodeID := parts[5]
+		s.handleFaultCommand(w, r, clusterID, nodeID, parts[7])
+		return
 	} else if r.Method == http.MethodPost && len(parts) == 7 && parts[6] == "heartbeat" {
 		nodeID := parts[5]
 		s.heartbeat(w, r, clusterID, nodeID)
@@ -193,6 +197,82 @@ func (s *Server) setFault(w http.ResponseWriter, r *http.Request, clusterID, nod
 
 	_, err := cmd.MapWait()
 	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+type setDropRateReq struct {
+	DropRate float64 `json:"drop_rate"`
+}
+
+type setDelayReq struct {
+	DelayMs int `json:"delay_ms"`
+}
+
+type setPartitionReq struct {
+	PeerID  string `json:"peer_id"`
+	Enabled bool   `json:"enabled"`
+}
+
+func (s *Server) handleFaultCommand(w http.ResponseWriter, r *http.Request, clusterID, nodeID, action string) {
+	var cmd controlplane.Command
+
+	switch action {
+	case "crash":
+		cmd = controlplane.NewCommand(controlplane.CmdCrashNode)
+		cmd.ClusterID = clusterID
+		cmd.NodeID = nodeID
+
+	case "recover":
+		cmd = controlplane.NewCommand(controlplane.CmdRecoverNode)
+		cmd.ClusterID = clusterID
+		cmd.NodeID = nodeID
+
+	case "drop-rate":
+		var req setDropRateReq
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		cmd = controlplane.NewCommand(controlplane.CmdSetDropRate)
+		cmd.ClusterID = clusterID
+		cmd.NodeID = nodeID
+		cmd.DropRate = req.DropRate
+
+	case "delay":
+		var req setDelayReq
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		cmd = controlplane.NewCommand(controlplane.CmdSetDelay)
+		cmd.ClusterID = clusterID
+		cmd.NodeID = nodeID
+		cmd.DelayMs = req.DelayMs
+
+	case "partition":
+		var req setPartitionReq
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		cmd = controlplane.NewCommand(controlplane.CmdSetPartition)
+		cmd.ClusterID = clusterID
+		cmd.NodeID = nodeID
+		cmd.PeerID = req.PeerID
+		cmd.Enabled = req.Enabled
+
+	default:
+		http.Error(w, "unknown fault action", http.StatusBadRequest)
+		return
+	}
+
+	s.actor.Submit(cmd)
+	if _, err := cmd.MapWait(); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

@@ -108,6 +108,72 @@ func Parse(input string) (Command, error) {
 			DelayMs:   delayMs,
 			Partition: partition,
 		}, nil
+
+	case "fault-crash":
+		if len(parts) < 3 {
+			return Command{}, fmt.Errorf("usage: fault-crash <cluster-id> <node-id>")
+		}
+		return Command{
+			Type:      CmdCrashNode,
+			ClusterID: parts[1],
+			NodeID:    parts[2],
+		}, nil
+
+	case "fault-recover":
+		if len(parts) < 3 {
+			return Command{}, fmt.Errorf("usage: fault-recover <cluster-id> <node-id>")
+		}
+		return Command{
+			Type:      CmdRecoverNode,
+			ClusterID: parts[1],
+			NodeID:    parts[2],
+		}, nil
+
+	case "fault-drop":
+		if len(parts) < 4 {
+			return Command{}, fmt.Errorf("usage: fault-drop <cluster-id> <node-id> <drop-rate:0..1>")
+		}
+		dropRate, err := strconv.ParseFloat(parts[3], 64)
+		if err != nil {
+			return Command{}, fmt.Errorf("invalid drop-rate: %v", err)
+		}
+		return Command{
+			Type:      CmdSetDropRate,
+			ClusterID: parts[1],
+			NodeID:    parts[2],
+			DropRate:  dropRate,
+		}, nil
+
+	case "fault-delay":
+		if len(parts) < 4 {
+			return Command{}, fmt.Errorf("usage: fault-delay <cluster-id> <node-id> <delay-ms:int>")
+		}
+		delayMs, err := strconv.Atoi(parts[3])
+		if err != nil {
+			return Command{}, fmt.Errorf("invalid delay-ms: %v", err)
+		}
+		return Command{
+			Type:      CmdSetDelay,
+			ClusterID: parts[1],
+			NodeID:    parts[2],
+			DelayMs:   delayMs,
+		}, nil
+
+	case "fault-partition":
+		if len(parts) < 5 {
+			return Command{}, fmt.Errorf("usage: fault-partition <cluster-id> <node-id> <peer-id> <enabled:true|false>")
+		}
+		enabled, err := strconv.ParseBool(parts[4])
+		if err != nil {
+			return Command{}, fmt.Errorf("invalid enabled flag: %v", err)
+		}
+		return Command{
+			Type:      CmdSetPartition,
+			ClusterID: parts[1],
+			NodeID:    parts[2],
+			PeerID:    parts[3],
+			Enabled:   enabled,
+		}, nil
 	}
 
 	return Command{}, fmt.Errorf("unknown command")

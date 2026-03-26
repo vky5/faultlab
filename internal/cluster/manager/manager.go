@@ -53,6 +53,12 @@ func (m *Manager) SetFaultParams(clusterID, nodeID string, params cluster.FaultS
 	}
 
 	node.Fault = params
+	// Update node status based on crash state
+	if params.Crashed {
+		node.Status = "crashed"
+	} else {
+		node.Status = "active"
+	}
 	host := node.Address
 	port := node.Port
 	ns := m.ns
