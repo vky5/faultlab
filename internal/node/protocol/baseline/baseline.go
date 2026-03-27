@@ -1,7 +1,6 @@
 package baseline
 
 import (
-	"encoding/json"
 	"log"
 	"strconv"
 	"strings"
@@ -194,7 +193,7 @@ func (b *BaselineProtocol) OnMessage(env protocol.Envelope) []protocol.Envelope 
 			logBaselinef("[baseline] %s revived via message at tick %d", env.From, b.tick)
 		}
 
-		ev, err := decodeEvent(env.Payload)
+		ev, err := protocol.DecodeJSON[MembershipEvent](env.Payload)
 		if err != nil {
 			return nil // for normal heartbeat it will return from here
 		}
@@ -266,7 +265,7 @@ func (b *BaselineProtocol) makeMembershipEnvelope(
 		To:       "", // broadcast
 		Protocol: "baseline",
 		Kind:     protocol.KindProtocol,
-		Payload:  encodeEvent(ev),
+		Payload:  protocol.EncodeJSON(ev),
 	}
 }
 
@@ -291,16 +290,4 @@ func init() { // init runs anytime someone imports the module
 	protocol.Register("baseline", func() protocol.ClusterProtocol {
 		return NewBaselineProtocol(nil) // this actually returns object of type Baselineprotocol on which we perform operation we store this struct and since this struct impleemnts all the func of the interface it fits perfectly
 	})
-}
-
-// TODO shift to protobuf or more effective thingy
-func encodeEvent(ev MembershipEvent) []byte {
-	data, _ := json.Marshal(ev)
-	return data
-}
-
-func decodeEvent(bts []byte) (MembershipEvent, error) {
-	var ev MembershipEvent
-	err := json.Unmarshal(bts, &ev)
-	return ev, err
 }
