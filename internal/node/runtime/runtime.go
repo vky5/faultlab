@@ -13,6 +13,7 @@ import (
 	"github.com/vky5/faultlab/internal/node/config"
 	proto "github.com/vky5/faultlab/internal/node/protocol"
 	_ "github.com/vky5/faultlab/internal/node/protocol/baseline" // to register baseline
+	_ "github.com/vky5/faultlab/internal/node/protocol/gossip"   // to register gossip
 	"github.com/vky5/faultlab/internal/protocol"
 	"google.golang.org/grpc"
 )
@@ -56,7 +57,7 @@ func (r *Runtime) Start(fe *fault.Engine) {
 	r.eventCh = make(chan RuntimeEvent, 1024) // implementing channel to recieve events // TODO check for the backpressure
 
 	r.logger.Printf("Loading baseline protocol...")
-	p, err := proto.Load("baseline")
+	p, err := proto.Load("gossip")
 	if err != nil {
 		log.Fatalf("protocol load failed: %v", err)
 	}
@@ -82,8 +83,8 @@ func (r *Runtime) Start(fe *fault.Engine) {
 	for _, p := range r.config.Peers {
 		peerIDs = append(peerIDs, p.ID)
 	}
-	if baseline, ok := p.(interface{ SetPeers([]string) }); ok {
-		baseline.SetPeers(peerIDs)
+	if peerAwareProtocol, ok := p.(interface{ SetPeers([]string) }); ok { // It is simply asking does the peer whose type we don't know fully impements the method SetPeers that takes list of string as input
+		peerAwareProtocol.SetPeers(peerIDs)
 		r.logger.Printf("Initial peers set for protocol: %v", peerIDs)
 	}
 
@@ -96,6 +97,13 @@ func (r *Runtime) Start(fe *fault.Engine) {
 		log.Fatalf("failed to initialize the initial state of the protocol")
 	}
 	r.logger.Printf("Protocol started for node %s", r.config.ID)
+
+	// PutAction(r.proto, "b", "node2_value")
+	// PutAction(r.proto, "c", "node3_valufasde_2")
+	// PutAction(r.proto, "d", "node4_fasdfasd")
+	// PutAction(r.proto, "e", "node5_value")
+	// PutAction(r.proto, "a", "node1_value")
+
 
 	go r.driver.Run(r.ctx, p)
 	go r.runProtocolLoop()

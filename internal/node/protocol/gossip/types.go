@@ -70,11 +70,17 @@ A merges C
 
 
 
-One more thing, 
-B never queries A for update
+One more thing,
+the current implementation behaves like push-pull on digest exchange.
 
-for example a: 6 in A
-and when A snds the state, B compares a and sees B is behind x 
-& A is missing c, so B sends the state to A, and A merges it.
-But it wont request the updated a
+If B sees A is behind, B sends STATE to A.
+If B sees B is behind, B sends its DIGEST back to A so A can answer with STATE.
+
+For example:
+A sends DIGEST with a:6
+B has a:3 and c:7
+
+B sends STATE {c:7} to A because A is missing c.
+B also sends its own DIGEST back because B is behind on a.
+A can then reply with STATE for a:6.
 */ 

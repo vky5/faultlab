@@ -113,8 +113,8 @@ func (r *Runtime) applyPeersTopology(peers []*protocol.NodeInfo, discovered *pro
 	for _, p := range r.config.Peers {
 		peerIDs = append(peerIDs, p.ID)
 	}
-	if baseline, ok := r.proto.(interface{ SetPeers([]string) }); ok {
-		baseline.SetPeers(peerIDs)
+	if peerAwareProtocol, ok := r.proto.(interface{ SetPeers([]string) }); ok {
+		peerAwareProtocol.SetPeers(peerIDs)
 	}
 
 }
