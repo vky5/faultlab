@@ -4,13 +4,13 @@ type MessageType string
 
 const (
 	MsgDigest MessageType = "DIGEST" // Digest → Compare → Push missing data
-	MsgState MessageType = "STATE"
+	MsgState  MessageType = "STATE"
 )
 
-
 type Value struct {
-	Data string
+	Data    string
 	Version int64
+	NodeID  string
 }
 
 // Envelope for gossip messages
@@ -18,14 +18,13 @@ type GossipMessage struct {
 	Type MessageType `json:"type"`
 
 	Digest map[string]int64 `json:"digest,omitempty"`
-	State map[string]Value `json:"state,omitempty"`
+	State  map[string]Value `json:"state,omitempty"`
 }
-
 
 /*
 ? This is the architecture for PUSH BASESD GOSSIP PROTOCOL “I see what you’re missing → I send it to you”
 ? Pull - “I see what I’m missing → I ask you for it”
-? Push pull 
+? Push pull
 A → B : DIGEST
 B → A : DIGEST
 A → B : STATE (what B needs)
@@ -45,7 +44,7 @@ I have a key a at version 5, key b at version 2
 
 Need of digest?
 Sending full data every time is stupid
-- Waste bandwidth 
+- Waste bandwidth
 - duplicate data
 - slow
 
@@ -63,7 +62,7 @@ a:3
 b:2
 c:7
 
-B sends to A state 
+B sends to A state
 B → A : STATE {c:7}
 
 A merges C
@@ -83,4 +82,4 @@ B has a:3 and c:7
 B sends STATE {c:7} to A because A is missing c.
 B also sends its own DIGEST back because B is behind on a.
 A can then reply with STATE for a:6.
-*/ 
+*/

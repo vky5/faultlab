@@ -1,4 +1,5 @@
 *.log
+TODO
 *.sh
 controlplane
 node_modules

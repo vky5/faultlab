@@ -55,16 +55,6 @@ func (g *GossipProtocol) Start(nodeID string) error {
 func (g *GossipProtocol) Tick() []protocol.Envelope {
 	g.tick++
 
-	// Print current store state
-	if len(g.store) > 0 {
-		logGossipf("[gossip] node %s tick %d - STORE CONTENTS:", g.nodeID, g.tick)
-		for k, v := range g.store {
-			logGossipf("[gossip]   %s = {Data: %q, Version: %d}", k, v.Data, v.Version)
-		}
-	} else {
-		logGossipf("[gossip] node %s tick %d - STORE is empty", g.nodeID, g.tick)
-	}
-
 	if g.tick%g.gossipInterval != 0 {
 		return nil
 	}
@@ -81,7 +71,7 @@ func (g *GossipProtocol) Tick() []protocol.Envelope {
 	peer, ok := g.pickRandomPeer()
 	if !ok {
 		logGossipf("[gossip] node %s tick %d: no peers to gossip with", g.nodeID, g.tick)
-		return []protocol.Envelope{}
+		return nil
 	}
 
 	logGossipf("[gossip] node %s tick %d: sending digest with %d keys to %s", g.nodeID, g.tick, len(gm.Digest), peer)
@@ -117,7 +107,7 @@ func (g *GossipProtocol) OnMessage(env protocol.Envelope) []protocol.Envelope {
 	msg, err := protocol.DecodeJSON[GossipMessage](env.Payload)
 	if err != nil {
 		logGossipf("[gossip] decode failed from %s: %v", env.From, err)
-		return []protocol.Envelope{}
+		return nil
 	}
 
 	switch msg.Type {
@@ -129,7 +119,7 @@ func (g *GossipProtocol) OnMessage(env protocol.Envelope) []protocol.Envelope {
 		return g.handleState(msg)
 	default:
 		logGossipf("[gossip] unknown message type %q from %s", msg.Type, senderID)
-		return []protocol.Envelope{}
+		return nil
 	}
 }
 
@@ -147,6 +137,9 @@ func (g *GossipProtocol) handleDigest(from string, msg GossipMessage) []protocol
 	for key, localVal := range g.store {
 		remoteVer, ok := msg.Digest[key]
 		if !ok || localVal.Version > remoteVer {
+			stateMsg.State[key] = localVal
+		} else if ok && localVal.Version == remoteVer {
+			// Equal versions can still hide conflicts; send value so receiver can tie-break.
 			stateMsg.State[key] = localVal
 		}
 	}
@@ -209,8 +202,13 @@ func (g *GossipProtocol) handleDigest(from string, msg GossipMessage) []protocol
 
 // for setting up peers
 func (g *GossipProtocol) SetPeers(peers []string) {
-	g.peers = make([]string, len(peers))
-	copy(g.peers, peers)
+	filtered := make([]string, 0, len(peers))
+	for _, p := range peers {
+		if p != "" && p != g.nodeID {
+			filtered = append(filtered, p)
+		}
+	}
+	g.peers = filtered
 	logGossipf("[gossip] SetPeers called for node %s: %v", g.nodeID, g.peers)
 }
 
@@ -224,13 +222,13 @@ func (g *GossipProtocol) handleState(msg GossipMessage) []protocol.Envelope {
 	updated := 0
 	// update the local store with the received state
 	for k, v := range msg.State {
-		if localVal, ok := g.store[k]; !ok || localVal.Version < v.Version {
+		if localVal, ok := g.store[k]; !ok || isIncomingNewer(localVal, v) {
 			g.store[k] = v
 			updated++
 		}
 	}
 	logGossipf("[gossip] applied STATE update: %d/%d keys changed", updated, len(msg.State))
-	return []protocol.Envelope{} // Left it we ennable PUSH PULL later
+	return nil // Left it we ennable PUSH PULL later
 }
 
 // for debugging and testing purposes
@@ -292,12 +290,24 @@ func parseSenderAddress(from string) (peerID, host string, port int) {
 func (g *GossipProtocol) Put(key, data string) {
 	current, ok := g.store[key]
 	if !ok {
-		g.store[key] = Value{Data: data, Version: 1}
+		g.store[key] = Value{Data: data, Version: 1, NodeID: g.nodeID}
 		logGossipf("[gossip] PUT created key=%s version=%d", key, g.store[key].Version)
 	} else {
-		g.store[key] = Value{Data: data, Version: current.Version + 1}
+		g.store[key] = Value{Data: data, Version: current.Version + 1, NodeID: g.nodeID}
 		logGossipf("[gossip] PUT updated key=%s version=%d", key, g.store[key].Version)
 	}
+}
+
+// comparing the digest
+func isIncomingNewer(local, incoming Value) bool {
+	if incoming.Version > local.Version {
+		return true
+	}
+	if incoming.Version < local.Version {
+		return false
+	}
+	// tie-break
+	return incoming.NodeID > local.NodeID
 }
 
 func init() {
