@@ -13,6 +13,7 @@ import (
 type noderuntime interface { // this is what runtime implements  check runtime.go
 	Stop()
 	HandleEnvelope(env *protocol.EnvelopeRequest)
+	ExecuteAction(ctx context.Context, req *protocol.ActionRequest) (*protocol.ActionResponse, error)
 	SetFaultParams(params *protocol.FaultRequest) error
 	exec.FaultDecider
 }
@@ -115,4 +116,29 @@ func (n *NodeRPCServer) SetFaultParams(
 		Success: true,
 		Message: "fault parameters applied",
 	}, nil
+}
+
+// ExecuteAction takes the action request from the controlplane and send it to runtime for execution
+func (n *NodeRPCServer) ExecuteAction(
+	ctx context.Context,
+	req *protocol.ActionRequest,
+) (*protocol.ActionResponse, error) {
+
+	if !n.nc.BeforeTick() {
+		return nil, status.Error(codes.Unavailable, "node is crashed")
+	}
+
+	if req == nil {
+		return &protocol.ActionResponse{
+			Success: false,
+			Message: "nil action request",
+		}, nil
+	}
+
+	resp, err := n.nc.ExecuteAction(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
 }

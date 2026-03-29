@@ -21,6 +21,316 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type ActionType int32
+
+const (
+	ActionType_ACTION_UNKNOWN ActionType = 0
+	ActionType_KV_PUT         ActionType = 1
+	ActionType_KV_GET         ActionType = 2
+)
+
+// Enum value maps for ActionType.
+var (
+	ActionType_name = map[int32]string{
+		0: "ACTION_UNKNOWN",
+		1: "KV_PUT",
+		2: "KV_GET",
+	}
+	ActionType_value = map[string]int32{
+		"ACTION_UNKNOWN": 0,
+		"KV_PUT":         1,
+		"KV_GET":         2,
+	}
+)
+
+func (x ActionType) Enum() *ActionType {
+	p := new(ActionType)
+	*p = x
+	return p
+}
+
+func (x ActionType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ActionType) Descriptor() protoreflect.EnumDescriptor {
+	return file_internal_protocol_node_proto_enumTypes[0].Descriptor()
+}
+
+func (ActionType) Type() protoreflect.EnumType {
+	return &file_internal_protocol_node_proto_enumTypes[0]
+}
+
+func (x ActionType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ActionType.Descriptor instead.
+func (ActionType) EnumDescriptor() ([]byte, []int) {
+	return file_internal_protocol_node_proto_rawDescGZIP(), []int{0}
+}
+
+type ActionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	Action        ActionType             `protobuf:"varint,2,opt,name=action,proto3,enum=protocol.ActionType" json:"action,omitempty"` // "kv.put", "kv.get"
+	Payload       []byte                 `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ActionRequest) Reset() {
+	*x = ActionRequest{}
+	mi := &file_internal_protocol_node_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ActionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ActionRequest) ProtoMessage() {}
+
+func (x *ActionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_protocol_node_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ActionRequest.ProtoReflect.Descriptor instead.
+func (*ActionRequest) Descriptor() ([]byte, []int) {
+	return file_internal_protocol_node_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *ActionRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *ActionRequest) GetAction() ActionType {
+	if x != nil {
+		return x.Action
+	}
+	return ActionType_ACTION_UNKNOWN
+}
+
+func (x *ActionRequest) GetPayload() []byte {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+type ActionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	Payload       []byte                 `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"` // used for returning data (like get)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ActionResponse) Reset() {
+	*x = ActionResponse{}
+	mi := &file_internal_protocol_node_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ActionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ActionResponse) ProtoMessage() {}
+
+func (x *ActionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_protocol_node_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ActionResponse.ProtoReflect.Descriptor instead.
+func (*ActionResponse) Descriptor() ([]byte, []int) {
+	return file_internal_protocol_node_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ActionResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *ActionResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *ActionResponse) GetPayload() []byte {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+// structure of payload for kv.put and kv.get
+type KVPutRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Value         string                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KVPutRequest) Reset() {
+	*x = KVPutRequest{}
+	mi := &file_internal_protocol_node_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KVPutRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KVPutRequest) ProtoMessage() {}
+
+func (x *KVPutRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_protocol_node_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KVPutRequest.ProtoReflect.Descriptor instead.
+func (*KVPutRequest) Descriptor() ([]byte, []int) {
+	return file_internal_protocol_node_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *KVPutRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *KVPutRequest) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+type KVGetRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KVGetRequest) Reset() {
+	*x = KVGetRequest{}
+	mi := &file_internal_protocol_node_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KVGetRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KVGetRequest) ProtoMessage() {}
+
+func (x *KVGetRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_protocol_node_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KVGetRequest.ProtoReflect.Descriptor instead.
+func (*KVGetRequest) Descriptor() ([]byte, []int) {
+	return file_internal_protocol_node_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *KVGetRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+type KVGetResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Value         string                 `protobuf:"bytes,1,opt,name=value,proto3" json:"value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KVGetResponse) Reset() {
+	*x = KVGetResponse{}
+	mi := &file_internal_protocol_node_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KVGetResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KVGetResponse) ProtoMessage() {}
+
+func (x *KVGetResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_protocol_node_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KVGetResponse.ProtoReflect.Descriptor instead.
+func (*KVGetResponse) Descriptor() ([]byte, []int) {
+	return file_internal_protocol_node_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *KVGetResponse) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
 type EnvelopeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	From          string                 `protobuf:"bytes,1,opt,name=from,proto3" json:"from,omitempty"`
@@ -33,7 +343,7 @@ type EnvelopeRequest struct {
 
 func (x *EnvelopeRequest) Reset() {
 	*x = EnvelopeRequest{}
-	mi := &file_internal_protocol_node_proto_msgTypes[0]
+	mi := &file_internal_protocol_node_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -45,7 +355,7 @@ func (x *EnvelopeRequest) String() string {
 func (*EnvelopeRequest) ProtoMessage() {}
 
 func (x *EnvelopeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_protocol_node_proto_msgTypes[0]
+	mi := &file_internal_protocol_node_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -58,7 +368,7 @@ func (x *EnvelopeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnvelopeRequest.ProtoReflect.Descriptor instead.
 func (*EnvelopeRequest) Descriptor() ([]byte, []int) {
-	return file_internal_protocol_node_proto_rawDescGZIP(), []int{0}
+	return file_internal_protocol_node_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *EnvelopeRequest) GetFrom() string {
@@ -99,7 +409,7 @@ type EnvelopeAck struct {
 
 func (x *EnvelopeAck) Reset() {
 	*x = EnvelopeAck{}
-	mi := &file_internal_protocol_node_proto_msgTypes[1]
+	mi := &file_internal_protocol_node_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -111,7 +421,7 @@ func (x *EnvelopeAck) String() string {
 func (*EnvelopeAck) ProtoMessage() {}
 
 func (x *EnvelopeAck) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_protocol_node_proto_msgTypes[1]
+	mi := &file_internal_protocol_node_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -124,7 +434,7 @@ func (x *EnvelopeAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnvelopeAck.ProtoReflect.Descriptor instead.
 func (*EnvelopeAck) Descriptor() ([]byte, []int) {
-	return file_internal_protocol_node_proto_rawDescGZIP(), []int{1}
+	return file_internal_protocol_node_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *EnvelopeAck) GetSuccess() bool {
@@ -153,7 +463,7 @@ type HandshakeRequest struct {
 
 func (x *HandshakeRequest) Reset() {
 	*x = HandshakeRequest{}
-	mi := &file_internal_protocol_node_proto_msgTypes[2]
+	mi := &file_internal_protocol_node_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -165,7 +475,7 @@ func (x *HandshakeRequest) String() string {
 func (*HandshakeRequest) ProtoMessage() {}
 
 func (x *HandshakeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_protocol_node_proto_msgTypes[2]
+	mi := &file_internal_protocol_node_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -178,7 +488,7 @@ func (x *HandshakeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HandshakeRequest.ProtoReflect.Descriptor instead.
 func (*HandshakeRequest) Descriptor() ([]byte, []int) {
-	return file_internal_protocol_node_proto_rawDescGZIP(), []int{2}
+	return file_internal_protocol_node_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *HandshakeRequest) GetClusterId() string {
@@ -219,7 +529,7 @@ type HandshakeResponse struct {
 
 func (x *HandshakeResponse) Reset() {
 	*x = HandshakeResponse{}
-	mi := &file_internal_protocol_node_proto_msgTypes[3]
+	mi := &file_internal_protocol_node_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -231,7 +541,7 @@ func (x *HandshakeResponse) String() string {
 func (*HandshakeResponse) ProtoMessage() {}
 
 func (x *HandshakeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_protocol_node_proto_msgTypes[3]
+	mi := &file_internal_protocol_node_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -244,7 +554,7 @@ func (x *HandshakeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HandshakeResponse.ProtoReflect.Descriptor instead.
 func (*HandshakeResponse) Descriptor() ([]byte, []int) {
-	return file_internal_protocol_node_proto_rawDescGZIP(), []int{3}
+	return file_internal_protocol_node_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *HandshakeResponse) GetSuccess() bool {
@@ -270,7 +580,7 @@ type PingRequest struct {
 
 func (x *PingRequest) Reset() {
 	*x = PingRequest{}
-	mi := &file_internal_protocol_node_proto_msgTypes[4]
+	mi := &file_internal_protocol_node_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -282,7 +592,7 @@ func (x *PingRequest) String() string {
 func (*PingRequest) ProtoMessage() {}
 
 func (x *PingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_protocol_node_proto_msgTypes[4]
+	mi := &file_internal_protocol_node_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -295,7 +605,7 @@ func (x *PingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PingRequest.ProtoReflect.Descriptor instead.
 func (*PingRequest) Descriptor() ([]byte, []int) {
-	return file_internal_protocol_node_proto_rawDescGZIP(), []int{4}
+	return file_internal_protocol_node_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *PingRequest) GetFrom() string {
@@ -314,7 +624,7 @@ type PingResponse struct {
 
 func (x *PingResponse) Reset() {
 	*x = PingResponse{}
-	mi := &file_internal_protocol_node_proto_msgTypes[5]
+	mi := &file_internal_protocol_node_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -326,7 +636,7 @@ func (x *PingResponse) String() string {
 func (*PingResponse) ProtoMessage() {}
 
 func (x *PingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_protocol_node_proto_msgTypes[5]
+	mi := &file_internal_protocol_node_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -339,7 +649,7 @@ func (x *PingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PingResponse.ProtoReflect.Descriptor instead.
 func (*PingResponse) Descriptor() ([]byte, []int) {
-	return file_internal_protocol_node_proto_rawDescGZIP(), []int{5}
+	return file_internal_protocol_node_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *PingResponse) GetMessage() string {
@@ -359,7 +669,7 @@ type RemoveNodeRequest struct {
 
 func (x *RemoveNodeRequest) Reset() {
 	*x = RemoveNodeRequest{}
-	mi := &file_internal_protocol_node_proto_msgTypes[6]
+	mi := &file_internal_protocol_node_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -371,7 +681,7 @@ func (x *RemoveNodeRequest) String() string {
 func (*RemoveNodeRequest) ProtoMessage() {}
 
 func (x *RemoveNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_protocol_node_proto_msgTypes[6]
+	mi := &file_internal_protocol_node_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -384,7 +694,7 @@ func (x *RemoveNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveNodeRequest.ProtoReflect.Descriptor instead.
 func (*RemoveNodeRequest) Descriptor() ([]byte, []int) {
-	return file_internal_protocol_node_proto_rawDescGZIP(), []int{6}
+	return file_internal_protocol_node_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *RemoveNodeRequest) GetClusterId() string {
@@ -410,7 +720,7 @@ type RemoveNodeResponse struct {
 
 func (x *RemoveNodeResponse) Reset() {
 	*x = RemoveNodeResponse{}
-	mi := &file_internal_protocol_node_proto_msgTypes[7]
+	mi := &file_internal_protocol_node_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -422,7 +732,7 @@ func (x *RemoveNodeResponse) String() string {
 func (*RemoveNodeResponse) ProtoMessage() {}
 
 func (x *RemoveNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_protocol_node_proto_msgTypes[7]
+	mi := &file_internal_protocol_node_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -435,7 +745,7 @@ func (x *RemoveNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveNodeResponse.ProtoReflect.Descriptor instead.
 func (*RemoveNodeResponse) Descriptor() ([]byte, []int) {
-	return file_internal_protocol_node_proto_rawDescGZIP(), []int{7}
+	return file_internal_protocol_node_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *RemoveNodeResponse) GetMessage() string {
@@ -458,7 +768,7 @@ type FaultRequest struct {
 
 func (x *FaultRequest) Reset() {
 	*x = FaultRequest{}
-	mi := &file_internal_protocol_node_proto_msgTypes[8]
+	mi := &file_internal_protocol_node_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -470,7 +780,7 @@ func (x *FaultRequest) String() string {
 func (*FaultRequest) ProtoMessage() {}
 
 func (x *FaultRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_protocol_node_proto_msgTypes[8]
+	mi := &file_internal_protocol_node_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -483,7 +793,7 @@ func (x *FaultRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FaultRequest.ProtoReflect.Descriptor instead.
 func (*FaultRequest) Descriptor() ([]byte, []int) {
-	return file_internal_protocol_node_proto_rawDescGZIP(), []int{8}
+	return file_internal_protocol_node_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *FaultRequest) GetCrashed() bool {
@@ -531,7 +841,7 @@ type FaultResponse struct {
 
 func (x *FaultResponse) Reset() {
 	*x = FaultResponse{}
-	mi := &file_internal_protocol_node_proto_msgTypes[9]
+	mi := &file_internal_protocol_node_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -543,7 +853,7 @@ func (x *FaultResponse) String() string {
 func (*FaultResponse) ProtoMessage() {}
 
 func (x *FaultResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_protocol_node_proto_msgTypes[9]
+	mi := &file_internal_protocol_node_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -556,7 +866,7 @@ func (x *FaultResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FaultResponse.ProtoReflect.Descriptor instead.
 func (*FaultResponse) Descriptor() ([]byte, []int) {
-	return file_internal_protocol_node_proto_rawDescGZIP(), []int{9}
+	return file_internal_protocol_node_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *FaultResponse) GetSuccess() bool {
@@ -577,7 +887,22 @@ var File_internal_protocol_node_proto protoreflect.FileDescriptor
 
 const file_internal_protocol_node_proto_rawDesc = "" +
 	"\n" +
-	"\x1cinternal/protocol/node.proto\x12\bprotocol\"k\n" +
+	"\x1cinternal/protocol/node.proto\x12\bprotocol\"p\n" +
+	"\rActionRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12,\n" +
+	"\x06action\x18\x02 \x01(\x0e2\x14.protocol.ActionTypeR\x06action\x12\x18\n" +
+	"\apayload\x18\x03 \x01(\fR\apayload\"^\n" +
+	"\x0eActionResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12\x18\n" +
+	"\apayload\x18\x03 \x01(\fR\apayload\"6\n" +
+	"\fKVPutRequest\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\" \n" +
+	"\fKVGetRequest\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\"%\n" +
+	"\rKVGetResponse\x12\x14\n" +
+	"\x05value\x18\x01 \x01(\tR\x05value\"k\n" +
 	"\x0fEnvelopeRequest\x12\x12\n" +
 	"\x04from\x18\x01 \x01(\tR\x04from\x12\x0e\n" +
 	"\x02to\x18\x02 \x01(\tR\x02to\x12\x1a\n" +
@@ -613,13 +938,21 @@ const file_internal_protocol_node_proto_rawDesc = "" +
 	"\tpartition\x18\x05 \x03(\tR\tpartition\"C\n" +
 	"\rFaultResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage2\xd6\x02\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage*8\n" +
+	"\n" +
+	"ActionType\x12\x12\n" +
+	"\x0eACTION_UNKNOWN\x10\x00\x12\n" +
+	"\n" +
+	"\x06KV_PUT\x10\x01\x12\n" +
+	"\n" +
+	"\x06KV_GET\x10\x022\x9a\x03\n" +
 	"\vNodeService\x125\n" +
 	"\x04Ping\x12\x15.protocol.PingRequest\x1a\x16.protocol.PingResponse\x12E\n" +
 	"\bStopNode\x12\x1b.protocol.RemoveNodeRequest\x1a\x1c.protocol.RemoveNodeResponse\x12D\n" +
 	"\tHandshake\x12\x1a.protocol.HandshakeRequest\x1a\x1b.protocol.HandshakeResponse\x12@\n" +
 	"\fSendEnvelope\x12\x19.protocol.EnvelopeRequest\x1a\x15.protocol.EnvelopeAck\x12A\n" +
-	"\x0eSetFaultParams\x12\x16.protocol.FaultRequest\x1a\x17.protocol.FaultResponseB\x1cZ\x1afaultlab/internal/protocolb\x06proto3"
+	"\x0eSetFaultParams\x12\x16.protocol.FaultRequest\x1a\x17.protocol.FaultResponse\x12B\n" +
+	"\rExecuteAction\x12\x17.protocol.ActionRequest\x1a\x18.protocol.ActionResponseB\x1cZ\x1afaultlab/internal/protocolb\x06proto3"
 
 var (
 	file_internal_protocol_node_proto_rawDescOnce sync.Once
@@ -633,35 +966,45 @@ func file_internal_protocol_node_proto_rawDescGZIP() []byte {
 	return file_internal_protocol_node_proto_rawDescData
 }
 
-var file_internal_protocol_node_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_internal_protocol_node_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_internal_protocol_node_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_internal_protocol_node_proto_goTypes = []any{
-	(*EnvelopeRequest)(nil),    // 0: protocol.EnvelopeRequest
-	(*EnvelopeAck)(nil),        // 1: protocol.EnvelopeAck
-	(*HandshakeRequest)(nil),   // 2: protocol.HandshakeRequest
-	(*HandshakeResponse)(nil),  // 3: protocol.HandshakeResponse
-	(*PingRequest)(nil),        // 4: protocol.PingRequest
-	(*PingResponse)(nil),       // 5: protocol.PingResponse
-	(*RemoveNodeRequest)(nil),  // 6: protocol.RemoveNodeRequest
-	(*RemoveNodeResponse)(nil), // 7: protocol.RemoveNodeResponse
-	(*FaultRequest)(nil),       // 8: protocol.FaultRequest
-	(*FaultResponse)(nil),      // 9: protocol.FaultResponse
+	(ActionType)(0),            // 0: protocol.ActionType
+	(*ActionRequest)(nil),      // 1: protocol.ActionRequest
+	(*ActionResponse)(nil),     // 2: protocol.ActionResponse
+	(*KVPutRequest)(nil),       // 3: protocol.KVPutRequest
+	(*KVGetRequest)(nil),       // 4: protocol.KVGetRequest
+	(*KVGetResponse)(nil),      // 5: protocol.KVGetResponse
+	(*EnvelopeRequest)(nil),    // 6: protocol.EnvelopeRequest
+	(*EnvelopeAck)(nil),        // 7: protocol.EnvelopeAck
+	(*HandshakeRequest)(nil),   // 8: protocol.HandshakeRequest
+	(*HandshakeResponse)(nil),  // 9: protocol.HandshakeResponse
+	(*PingRequest)(nil),        // 10: protocol.PingRequest
+	(*PingResponse)(nil),       // 11: protocol.PingResponse
+	(*RemoveNodeRequest)(nil),  // 12: protocol.RemoveNodeRequest
+	(*RemoveNodeResponse)(nil), // 13: protocol.RemoveNodeResponse
+	(*FaultRequest)(nil),       // 14: protocol.FaultRequest
+	(*FaultResponse)(nil),      // 15: protocol.FaultResponse
 }
 var file_internal_protocol_node_proto_depIdxs = []int32{
-	4, // 0: protocol.NodeService.Ping:input_type -> protocol.PingRequest
-	6, // 1: protocol.NodeService.StopNode:input_type -> protocol.RemoveNodeRequest
-	2, // 2: protocol.NodeService.Handshake:input_type -> protocol.HandshakeRequest
-	0, // 3: protocol.NodeService.SendEnvelope:input_type -> protocol.EnvelopeRequest
-	8, // 4: protocol.NodeService.SetFaultParams:input_type -> protocol.FaultRequest
-	5, // 5: protocol.NodeService.Ping:output_type -> protocol.PingResponse
-	7, // 6: protocol.NodeService.StopNode:output_type -> protocol.RemoveNodeResponse
-	3, // 7: protocol.NodeService.Handshake:output_type -> protocol.HandshakeResponse
-	1, // 8: protocol.NodeService.SendEnvelope:output_type -> protocol.EnvelopeAck
-	9, // 9: protocol.NodeService.SetFaultParams:output_type -> protocol.FaultResponse
-	5, // [5:10] is the sub-list for method output_type
-	0, // [0:5] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	0,  // 0: protocol.ActionRequest.action:type_name -> protocol.ActionType
+	10, // 1: protocol.NodeService.Ping:input_type -> protocol.PingRequest
+	12, // 2: protocol.NodeService.StopNode:input_type -> protocol.RemoveNodeRequest
+	8,  // 3: protocol.NodeService.Handshake:input_type -> protocol.HandshakeRequest
+	6,  // 4: protocol.NodeService.SendEnvelope:input_type -> protocol.EnvelopeRequest
+	14, // 5: protocol.NodeService.SetFaultParams:input_type -> protocol.FaultRequest
+	1,  // 6: protocol.NodeService.ExecuteAction:input_type -> protocol.ActionRequest
+	11, // 7: protocol.NodeService.Ping:output_type -> protocol.PingResponse
+	13, // 8: protocol.NodeService.StopNode:output_type -> protocol.RemoveNodeResponse
+	9,  // 9: protocol.NodeService.Handshake:output_type -> protocol.HandshakeResponse
+	7,  // 10: protocol.NodeService.SendEnvelope:output_type -> protocol.EnvelopeAck
+	15, // 11: protocol.NodeService.SetFaultParams:output_type -> protocol.FaultResponse
+	2,  // 12: protocol.NodeService.ExecuteAction:output_type -> protocol.ActionResponse
+	7,  // [7:13] is the sub-list for method output_type
+	1,  // [1:7] is the sub-list for method input_type
+	1,  // [1:1] is the sub-list for extension type_name
+	1,  // [1:1] is the sub-list for extension extendee
+	0,  // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_internal_protocol_node_proto_init() }
@@ -674,13 +1017,14 @@ func file_internal_protocol_node_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_protocol_node_proto_rawDesc), len(file_internal_protocol_node_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   10,
+			NumEnums:      1,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_internal_protocol_node_proto_goTypes,
 		DependencyIndexes: file_internal_protocol_node_proto_depIdxs,
+		EnumInfos:         file_internal_protocol_node_proto_enumTypes,
 		MessageInfos:      file_internal_protocol_node_proto_msgTypes,
 	}.Build()
 	File_internal_protocol_node_proto = out.File

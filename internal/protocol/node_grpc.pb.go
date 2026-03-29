@@ -24,6 +24,7 @@ const (
 	NodeService_Handshake_FullMethodName      = "/protocol.NodeService/Handshake"
 	NodeService_SendEnvelope_FullMethodName   = "/protocol.NodeService/SendEnvelope"
 	NodeService_SetFaultParams_FullMethodName = "/protocol.NodeService/SetFaultParams"
+	NodeService_ExecuteAction_FullMethodName  = "/protocol.NodeService/ExecuteAction"
 )
 
 // NodeServiceClient is the client API for NodeService service.
@@ -34,7 +35,9 @@ type NodeServiceClient interface {
 	StopNode(ctx context.Context, in *RemoveNodeRequest, opts ...grpc.CallOption) (*RemoveNodeResponse, error)
 	Handshake(ctx context.Context, in *HandshakeRequest, opts ...grpc.CallOption) (*HandshakeResponse, error)
 	SendEnvelope(ctx context.Context, in *EnvelopeRequest, opts ...grpc.CallOption) (*EnvelopeAck, error)
+	// RPCs for fault injection and action execution for controlplane
 	SetFaultParams(ctx context.Context, in *FaultRequest, opts ...grpc.CallOption) (*FaultResponse, error)
+	ExecuteAction(ctx context.Context, in *ActionRequest, opts ...grpc.CallOption) (*ActionResponse, error)
 }
 
 type nodeServiceClient struct {
@@ -95,6 +98,16 @@ func (c *nodeServiceClient) SetFaultParams(ctx context.Context, in *FaultRequest
 	return out, nil
 }
 
+func (c *nodeServiceClient) ExecuteAction(ctx context.Context, in *ActionRequest, opts ...grpc.CallOption) (*ActionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ActionResponse)
+	err := c.cc.Invoke(ctx, NodeService_ExecuteAction_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NodeServiceServer is the server API for NodeService service.
 // All implementations must embed UnimplementedNodeServiceServer
 // for forward compatibility.
@@ -103,7 +116,9 @@ type NodeServiceServer interface {
 	StopNode(context.Context, *RemoveNodeRequest) (*RemoveNodeResponse, error)
 	Handshake(context.Context, *HandshakeRequest) (*HandshakeResponse, error)
 	SendEnvelope(context.Context, *EnvelopeRequest) (*EnvelopeAck, error)
+	// RPCs for fault injection and action execution for controlplane
 	SetFaultParams(context.Context, *FaultRequest) (*FaultResponse, error)
+	ExecuteAction(context.Context, *ActionRequest) (*ActionResponse, error)
 	mustEmbedUnimplementedNodeServiceServer()
 }
 
@@ -128,6 +143,9 @@ func (UnimplementedNodeServiceServer) SendEnvelope(context.Context, *EnvelopeReq
 }
 func (UnimplementedNodeServiceServer) SetFaultParams(context.Context, *FaultRequest) (*FaultResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetFaultParams not implemented")
+}
+func (UnimplementedNodeServiceServer) ExecuteAction(context.Context, *ActionRequest) (*ActionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ExecuteAction not implemented")
 }
 func (UnimplementedNodeServiceServer) mustEmbedUnimplementedNodeServiceServer() {}
 func (UnimplementedNodeServiceServer) testEmbeddedByValue()                     {}
@@ -240,6 +258,24 @@ func _NodeService_SetFaultParams_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NodeService_ExecuteAction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ActionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServiceServer).ExecuteAction(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeService_ExecuteAction_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServiceServer).ExecuteAction(ctx, req.(*ActionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NodeService_ServiceDesc is the grpc.ServiceDesc for NodeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -266,6 +302,10 @@ var NodeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetFaultParams",
 			Handler:    _NodeService_SetFaultParams_Handler,
+		},
+		{
+			MethodName: "ExecuteAction",
+			Handler:    _NodeService_ExecuteAction_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

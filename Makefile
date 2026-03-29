@@ -1,10 +1,11 @@
-.PHONY: node1 node2 node3 node4 node5 node6 node7 node8 node9 node10 controlplane cluster test-nodes stop config-node1 config-node2 config-node3 config-node4 config-node5 config-node6 config-node7 config-node8 config-node9 config-node10
+.PHONY: node1 node2 node3 node4 node5 node6 node7 node8 node9 node10 controlplane cluster test-nodes stop config-node1 config-node2 config-node3 config-node4 config-node5 config-node6 config-node7 config-node8 config-node9 config-node10 proto proto-all
 
 NODE_CMD := go run ./cmd/node
 CP_CMD := go run ./cmd/controlplane
 CLUSTER_ID := c1
 CONFIG_FILE := node.runtime.ini
 Frontend_DIR := ./frontend
+PROTO_DIR := internal/protocol
 
 # Start control plane
 controlplane:
@@ -155,3 +156,45 @@ test-nodes:
 	@echo "  make config-node1 CONFIG_FILE=node.runtime.ini"
 	@echo ""
 	@echo "Watch for ping logs showing peer health status"
+
+# Generate protobuf Go files for one proto by file name.
+# Usage:
+#   make proto FILE=node
+#   make proto FILE=node.proto
+proto:
+	@if [ -z "$(FILE)" ]; then \
+		echo "Usage: make proto FILE=<name|name.proto>"; \
+		exit 1; \
+	fi
+	@command -v protoc >/dev/null 2>&1 || { echo "Error: protoc is not installed"; exit 1; }
+	@command -v protoc-gen-go >/dev/null 2>&1 || { echo "Error: protoc-gen-go is not installed"; exit 1; }
+	@command -v protoc-gen-go-grpc >/dev/null 2>&1 || { echo "Error: protoc-gen-go-grpc is not installed"; exit 1; }
+	@name="$(FILE)"; \
+	base="$${name%.proto}"; \
+	matches="$$(find "$(PROTO_DIR)" -type f -name "$${base}.proto")"; \
+	if [ -z "$$matches" ]; then \
+		echo "No proto file found for '$${base}' under $(PROTO_DIR)"; \
+		exit 1; \
+	fi; \
+	for f in $$matches; do \
+		echo "Generating $$f"; \
+		protoc \
+			--proto_path=. \
+			--go_out=. --go_opt=paths=source_relative \
+			--go-grpc_out=. --go-grpc_opt=paths=source_relative \
+			"$$f"; \
+	done
+
+# Generate protobuf Go files for all proto files under internal/protocol.
+proto-all:
+	@command -v protoc >/dev/null 2>&1 || { echo "Error: protoc is not installed"; exit 1; }
+	@command -v protoc-gen-go >/dev/null 2>&1 || { echo "Error: protoc-gen-go is not installed"; exit 1; }
+	@command -v protoc-gen-go-grpc >/dev/null 2>&1 || { echo "Error: protoc-gen-go-grpc is not installed"; exit 1; }
+	@find "$(PROTO_DIR)" -type f -name "*.proto" | while read -r f; do \
+		echo "Generating $$f"; \
+		protoc \
+			--proto_path=. \
+			--go_out=. --go_opt=paths=source_relative \
+			--go-grpc_out=. --go-grpc_opt=paths=source_relative \
+			"$$f"; \
+	done

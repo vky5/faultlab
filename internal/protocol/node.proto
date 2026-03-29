@@ -9,9 +9,44 @@ service NodeService {
   rpc StopNode (RemoveNodeRequest) returns (RemoveNodeResponse);
   rpc Handshake(HandshakeRequest) returns (HandshakeResponse);
 
-  rpc SendEnvelope (EnvelopeRequest) returns (EnvelopeAck); // generic protocol for sending message
-  
+  rpc SendEnvelope (EnvelopeRequest) returns (EnvelopeAck); // generic protocol for sending message between nodes
+
+  // RPCs for fault injection and action execution for controlplane
   rpc SetFaultParams(FaultRequest) returns (FaultResponse);
+  rpc ExecuteAction (ActionRequest) returns (ActionResponse);
+}
+
+message ActionRequest {
+  string node_id = 1;
+  ActionType action  = 2; // "kv.put", "kv.get"
+  bytes  payload = 3;
+}
+
+message ActionResponse {
+  bool   success = 1;
+  string message = 2;
+  bytes  payload = 3; // used for returning data (like get)
+}
+
+enum ActionType {
+  ACTION_UNKNOWN = 0;
+
+  KV_PUT = 1;
+  KV_GET = 2;
+}
+
+// structure of payload for kv.put and kv.get
+message KVPutRequest {
+  string key = 1;
+  string value = 2;
+}
+
+message KVGetRequest {
+  string key = 1;
+} 
+
+message KVGetResponse {
+  string value = 1;
 }
 
 message EnvelopeRequest {
