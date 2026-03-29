@@ -16,7 +16,8 @@ func Parse(input string) (Command, error) {
 
 	switch parts[0] {
 	case "help":
-		return Command{Type: CmdHelp}, nil
+		cmd := NewCommand(CmdHelp)
+		return cmd, nil
 
 	case "new-cluster":
 		if len(parts) < 2 {
@@ -26,33 +27,31 @@ func Parse(input string) (Command, error) {
 		if len(parts) >= 3 {
 			protocol = parts[2]
 		}
-		return Command{
-			Type:      CmdCreateCluster,
-			ClusterID: parts[1],
-			Protocol:  protocol,
-		}, nil
+		cmd := NewCommand(CmdCreateCluster)
+		cmd.ClusterID = parts[1]
+		cmd.Protocol = protocol
+		return cmd, nil
 
 	case "remove-node":
 		if len(parts) < 3 {
 			return Command{}, fmt.Errorf("usage: remove-node <cluster-id> <node-id>")
 		}
-		return Command{
-			Type:      CmdRemoveNode,
-			ClusterID: parts[1],
-			NodeID:    parts[2],
-		}, nil
+		cmd := NewCommand(CmdRemoveNode)
+		cmd.ClusterID = parts[1]
+		cmd.NodeID = parts[2]
+		return cmd, nil
 
 	case "list-nodes":
 		if len(parts) < 2 {
 			return Command{}, fmt.Errorf("usage: list-nodes <cluster-id>")
 		}
-		return Command{
-			Type:      CmdListNodes,
-			ClusterID: parts[1],
-		}, nil
+		cmd := NewCommand(CmdListNodes)
+		cmd.ClusterID = parts[1]
+		return cmd, nil
 
 	case "list-clusters":
-		return Command{Type: CmdListClusters}, nil
+		cmd := NewCommand(CmdListClusters)
+		return cmd, nil
 
 	case "add-node":
 		if len(parts) < 5 {
@@ -64,13 +63,12 @@ func Parse(input string) (Command, error) {
 			return Command{}, fmt.Errorf("invalid port: %v", err)
 		}
 
-		return Command{
-			Type:      CmdAddNode,
-			ClusterID: parts[1],
-			NodeID:    parts[2],
-			Host:      parts[3],
-			Port:      port,
-		}, nil
+		cmd := NewCommand(CmdAddNode)
+		cmd.ClusterID = parts[1]
+		cmd.NodeID = parts[2]
+		cmd.Host = parts[3]
+		cmd.Port = port
+		return cmd, nil
 
 	case "set-fault":
 		// usage:
@@ -99,35 +97,32 @@ func Parse(input string) (Command, error) {
 			partition = strings.Split(parts[6], ",")
 		}
 
-		return Command{
-			Type:      CmdSetFaultParams,
-			ClusterID: parts[1],
-			NodeID:    parts[2],
-			Crashed:   crashed,
-			DropRate:  dropRate,
-			DelayMs:   delayMs,
-			Partition: partition,
-		}, nil
+		cmd := NewCommand(CmdSetFaultParams)
+		cmd.ClusterID = parts[1]
+		cmd.NodeID = parts[2]
+		cmd.Crashed = crashed
+		cmd.DropRate = dropRate
+		cmd.DelayMs = delayMs
+		cmd.Partition = partition
+		return cmd, nil
 
 	case "fault-crash":
 		if len(parts) < 3 {
 			return Command{}, fmt.Errorf("usage: fault-crash <cluster-id> <node-id>")
 		}
-		return Command{
-			Type:      CmdCrashNode,
-			ClusterID: parts[1],
-			NodeID:    parts[2],
-		}, nil
+		cmd := NewCommand(CmdCrashNode)
+		cmd.ClusterID = parts[1]
+		cmd.NodeID = parts[2]
+		return cmd, nil
 
 	case "fault-recover":
 		if len(parts) < 3 {
 			return Command{}, fmt.Errorf("usage: fault-recover <cluster-id> <node-id>")
 		}
-		return Command{
-			Type:      CmdRecoverNode,
-			ClusterID: parts[1],
-			NodeID:    parts[2],
-		}, nil
+		cmd := NewCommand(CmdRecoverNode)
+		cmd.ClusterID = parts[1]
+		cmd.NodeID = parts[2]
+		return cmd, nil
 
 	case "fault-drop":
 		if len(parts) < 4 {
@@ -137,12 +132,11 @@ func Parse(input string) (Command, error) {
 		if err != nil {
 			return Command{}, fmt.Errorf("invalid drop-rate: %v", err)
 		}
-		return Command{
-			Type:      CmdSetDropRate,
-			ClusterID: parts[1],
-			NodeID:    parts[2],
-			DropRate:  dropRate,
-		}, nil
+		cmd := NewCommand(CmdSetDropRate)
+		cmd.ClusterID = parts[1]
+		cmd.NodeID = parts[2]
+		cmd.DropRate = dropRate
+		return cmd, nil
 
 	case "fault-delay":
 		if len(parts) < 4 {
@@ -152,12 +146,11 @@ func Parse(input string) (Command, error) {
 		if err != nil {
 			return Command{}, fmt.Errorf("invalid delay-ms: %v", err)
 		}
-		return Command{
-			Type:      CmdSetDelay,
-			ClusterID: parts[1],
-			NodeID:    parts[2],
-			DelayMs:   delayMs,
-		}, nil
+		cmd := NewCommand(CmdSetDelay)
+		cmd.ClusterID = parts[1]
+		cmd.NodeID = parts[2]
+		cmd.DelayMs = delayMs
+		return cmd, nil
 
 	case "fault-partition":
 		if len(parts) < 5 {
@@ -167,36 +160,33 @@ func Parse(input string) (Command, error) {
 		if err != nil {
 			return Command{}, fmt.Errorf("invalid enabled flag: %v", err)
 		}
-		return Command{
-			Type:      CmdSetPartition,
-			ClusterID: parts[1],
-			NodeID:    parts[2],
-			PeerID:    parts[3],
-			Enabled:   enabled,
-		}, nil
+		cmd := NewCommand(CmdSetPartition)
+		cmd.ClusterID = parts[1]
+		cmd.NodeID = parts[2]
+		cmd.PeerID = parts[3]
+		cmd.Enabled = enabled
+		return cmd, nil
 
-		case "kv-put":
-			if len(parts) < 5 {
-				return Command{}, fmt.Errorf("usage: kv-put <cluster-id> <node-id> <key> <value>")
-			}
-			return Command{
-				Type:      CmdKVPut,
-				ClusterID: parts[1],
-				NodeID:    parts[2],
-				Key:       parts[3],
-				Value:     parts[4],
-			}, nil
+	case "kv-put":
+		if len(parts) < 5 {
+			return Command{}, fmt.Errorf("usage: kv-put <cluster-id> <node-id> <key> <value>")
+		}
+		cmd := NewCommand(CmdKVPut)
+		cmd.ClusterID = parts[1]
+		cmd.NodeID = parts[2]
+		cmd.Key = parts[3]
+		cmd.Value = parts[4]
+		return cmd, nil
 
-		case "kv-get":
-			if len(parts) < 4 {
-				return Command{}, fmt.Errorf("usage: kv-get <cluster-id> <node-id> <key>")
-			}
-			return Command{
-				Type:      CmdKVGet,
-				ClusterID: parts[1],
-				NodeID:    parts[2],
-				Key:       parts[3],
-			}, nil	
+	case "kv-get":
+		if len(parts) < 4 {
+			return Command{}, fmt.Errorf("usage: kv-get <cluster-id> <node-id> <key>")
+		}
+		cmd := NewCommand(CmdKVGet)
+		cmd.ClusterID = parts[1]
+		cmd.NodeID = parts[2]
+		cmd.Key = parts[3]
+		return cmd, nil
 	}
 
 	return Command{}, fmt.Errorf("unknown command")
