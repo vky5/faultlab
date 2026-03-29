@@ -231,6 +231,24 @@ func (a *Actor) Run() {
 			}
 			cmd.Reply(map[string]any{"status": "ok"}, nil)
 
+		case CmdKVPut:
+			err := a.service.ExecuteKVPut(context.Background(), cmd.ClusterID, cmd.NodeID, cmd.Key, cmd.Value)
+			if err != nil {
+				log.Println("kv-put error:", err)
+				cmd.Reply(nil, err)
+				continue
+			}
+			cmd.Reply(map[string]any{"status": "ok"}, nil)
+
+		case CmdKVGet:
+			value, err := a.service.ExecuteKVGet(context.Background(), cmd.ClusterID, cmd.NodeID, cmd.Key)
+			if err != nil {
+				log.Println("kv-get error:", err)
+				cmd.Reply(nil, err)
+				continue
+			}
+			cmd.Reply(map[string]any{"value": value}, nil)
+
 		case CmdHelp:
 			help := []string{
 				"new-cluster <cluster-id> [protocol]",
@@ -238,6 +256,8 @@ func (a *Actor) Run() {
 				"remove-node <cluster-id> <node-id>",
 				"list-nodes <cluster-id>",
 				"list-clusters",
+				"kv-put <cluster-id> <node-id> <key> <value>",
+				"kv-get <cluster-id> <node-id> <key>",
 				"set-fault <cluster-id> <node-id> <crashed:true|false> <drop-rate:0..1> <delay-ms:int> [partition-csv]",
 				"fault-crash <cluster-id> <node-id>",
 				"fault-recover <cluster-id> <node-id>",

@@ -14,6 +14,8 @@ const (
 	CmdSetDropRate
 	CmdSetDelay
 	CmdSetPartition
+	CmdKVPut
+	CmdKVGet
 	CmdHelp
 )
 
@@ -27,6 +29,8 @@ type Command struct {
 	ClusterID string
 	Protocol  string
 	NodeID    string
+	Key       string
+	Value     string
 	Host      string
 	Port      int
 	Crashed   bool

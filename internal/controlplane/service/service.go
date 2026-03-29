@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/vky5/faultlab/internal/cluster"
 	clustermanager "github.com/vky5/faultlab/internal/cluster/manager"
 	"github.com/vky5/faultlab/internal/protocol"
-	"sync"
+	gproto "google.golang.org/protobuf/proto"
 )
 
 type Service struct {
@@ -17,7 +18,7 @@ type Service struct {
 	// NodeClient *controlplanerpc.NodeClient // ? this is hard dependency and it exposes the APIs of the Proto directly to service, we just need to call the function that's why this abstraction is necessary
 	NodeClient NodeOperator
 
-	logMu       sync.RWMutex
+	logMu        sync.RWMutex
 	logListeners map[chan *protocol.LogRequest]struct{}
 }
 
@@ -107,6 +108,65 @@ func (s *Service) Heartbeat(clusterID, nodeID string) error {
 
 func (s *Service) SetFaultParams(clusterID, nodeID string, fault cluster.FaultState) error {
 	return s.cluster.SetFaultParams(clusterID, nodeID, fault)
+}
+
+func (s *Service) ExecuteKVPut(ctx context.Context, clusterID, nodeID, key, value string) error {
+	n, err := s.cluster.GetNode(clusterID, nodeID)
+	if err != nil {
+		return err
+	}
+
+	payload, err := gproto.Marshal(&protocol.KVPutRequest{Key: key, Value: value})
+	if err != nil {
+		return fmt.Errorf("marshal kv-put payload: %w", err)
+	}
+
+	resp, err := s.NodeClient.ExecuteAction(ctx, n.Address, n.Port, &protocol.ActionRequest{
+		NodeId:  nodeID,
+		Action:  protocol.ActionType_KV_PUT,
+		Payload: payload,
+	})
+	if err != nil {
+		return fmt.Errorf("execute kv-put failed: %w", err)
+	}
+
+	if !resp.GetSuccess() {
+		return fmt.Errorf("kv-put rejected: %s", resp.GetMessage())
+	}
+
+	return nil
+}
+
+func (s *Service) ExecuteKVGet(ctx context.Context, clusterID, nodeID, key string) (string, error) {
+	n, err := s.cluster.GetNode(clusterID, nodeID)
+	if err != nil {
+		return "", err
+	}
+
+	payload, err := gproto.Marshal(&protocol.KVGetRequest{Key: key})
+	if err != nil {
+		return "", fmt.Errorf("marshal kv-get payload: %w", err)
+	}
+
+	resp, err := s.NodeClient.ExecuteAction(ctx, n.Address, n.Port, &protocol.ActionRequest{
+		NodeId:  nodeID,
+		Action:  protocol.ActionType_KV_GET,
+		Payload: payload,
+	})
+	if err != nil {
+		return "", fmt.Errorf("execute kv-get failed: %w", err)
+	}
+
+	if !resp.GetSuccess() {
+		return "", fmt.Errorf("kv-get rejected: %s", resp.GetMessage())
+	}
+
+	var out protocol.KVGetResponse
+	if err := gproto.Unmarshal(resp.GetPayload(), &out); err != nil {
+		return "", fmt.Errorf("decode kv-get response: %w", err)
+	}
+
+	return out.GetValue(), nil
 }
 
 // SubscribeLogs registers a new SSE client for logs

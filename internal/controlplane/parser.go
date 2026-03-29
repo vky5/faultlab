@@ -174,6 +174,29 @@ func Parse(input string) (Command, error) {
 			PeerID:    parts[3],
 			Enabled:   enabled,
 		}, nil
+
+		case "kv-put":
+			if len(parts) < 5 {
+				return Command{}, fmt.Errorf("usage: kv-put <cluster-id> <node-id> <key> <value>")
+			}
+			return Command{
+				Type:      CmdKVPut,
+				ClusterID: parts[1],
+				NodeID:    parts[2],
+				Key:       parts[3],
+				Value:     parts[4],
+			}, nil
+
+		case "kv-get":
+			if len(parts) < 4 {
+				return Command{}, fmt.Errorf("usage: kv-get <cluster-id> <node-id> <key>")
+			}
+			return Command{
+				Type:      CmdKVGet,
+				ClusterID: parts[1],
+				NodeID:    parts[2],
+				Key:       parts[3],
+			}, nil	
 	}
 
 	return Command{}, fmt.Errorf("unknown command")

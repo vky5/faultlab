@@ -69,3 +69,20 @@ func (n *NodeClient) Ping(ctx context.Context, host string, port int) error {
 
 	return err
 }
+
+func (n *NodeClient) ExecuteAction(ctx context.Context, host string, port int, req *protocol.ActionRequest) (*protocol.ActionResponse, error) {
+	addr := fmt.Sprintf("%s:%d", host, port)
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	rpcCtx, cancel := context.WithTimeout(ctx, n.timeout)
+	defer cancel()
+
+	client := protocol.NewNodeServiceClient(conn)
+
+	return client.ExecuteAction(rpcCtx, req)
+}
