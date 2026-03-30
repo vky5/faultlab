@@ -338,12 +338,16 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
 
     activeEventSource.onmessage = (event) => {
       try {
-        const log = JSON.parse(event.data);
-        console.log("[SSE] Received log:", log);
+        // DISCARD messages if tab is hidden to prevent background backlog accumulation
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+          return;
+        }
 
+        const log = JSON.parse(event.data);
         const rawMsg = log.message || log.Message || "";
+        
         if (rawMsg.includes("TRACE:SEND:")) {
-          if (get().isPaused) return; // Ignore new messages while paused to prevent backlog burst
+          if (get().isPaused) return; // Skip if paused
           
           const parts = rawMsg.split(":");
           if (parts.length >= 4) {
@@ -353,7 +357,7 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
             const metadata = parts[5]?.trim();
             const sizeBytes = parseInt(parts[6]?.trim() || '0', 10);
             
-            // Check if source node is crashed - don't show messages from dead nodes (unless it is CP)
+            // Check if source node is crashed - don't show messages from dead nodes
             const { localStatuses, clusters } = get();
             if (sourceId !== "CP") {
               const cluster = clusters.find(c => c.id === clusterId);
@@ -361,7 +365,6 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
               const sourceStatus = localStatuses[sourceId] || sourceNode?.status || "active";
               
               if (sourceStatus === "crashed") {
-                console.log("[SSE] Skipping message from crashed node:", sourceId);
                 return;
               }
             }
@@ -378,10 +381,15 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
               timestampMs: (log.timestamp || log.Timestamp || Date.now() / 1000) * 1000
             };
 
-            console.log("[SSE] Creating message:", msg);
-            set((state) => ({
-              messages: [...state.messages, msg]
-            }));
+            set((state) => {
+              // Safety limit: only keep the last 200 messages in the store
+              // This handles cases where the tab is throttled but not fully hidden
+              const MAX_MESSAGES = 200;
+              const newMessages = [...state.messages, msg];
+              return {
+                messages: newMessages.length > MAX_MESSAGES ? newMessages.slice(-MAX_MESSAGES) : newMessages
+              };
+            });
           }
         }
       } catch (e) {
