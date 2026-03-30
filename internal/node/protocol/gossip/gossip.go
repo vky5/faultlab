@@ -1,6 +1,7 @@
 package gossip
 
 import (
+	"fmt"
 	"log"
 	"math/rand"
 	"strconv"
@@ -14,8 +15,14 @@ const (
 	gossipColorReset = "\033[0m"
 )
 
-func logGossipf(format string, args ...any) {
-	log.Printf(gossipColorCyan+format+gossipColorReset, args...)
+func (g *GossipProtocol) logGossipf(format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	log.Printf(gossipColorCyan+"[gossip] %s"+gossipColorReset, msg)
+	if g.logger != nil {
+		if l, ok := g.logger.(interface{ Printf(string, ...any) }); ok {
+			l.Printf(msg)
+		}
+	}
 }
 
 type GossipProtocol struct {
@@ -31,23 +38,26 @@ type GossipProtocol struct {
 
 	// Callback for dynamic peer discovery.
 	peerDiscoveryCb protocol.PeerDiscoveryCallback
+
+	logger any
 }
 
 func NewGossipProtocol() *GossipProtocol {
-	logGossipf("[gossip] NewGossipProtocol created")
-	return &GossipProtocol{
+	g := &GossipProtocol{
 		nodeID:         "",
 		peers:          []string{},
 		store:          make(map[string]Value),
 		gossipInterval: 3,
 	}
+	g.logGossipf("NewGossipProtocol created")
+	return g
 }
 
 // initialize the gossip protocol, set the nodeID and start the logical clock
 func (g *GossipProtocol) Start(nodeID string) error {
-	logGossipf("[gossip] Start called for node %s", nodeID)
 	g.nodeID = nodeID
 	g.tick = 0
+	g.logGossipf("Start called for node %s", nodeID)
 	return nil
 }
 
@@ -70,11 +80,27 @@ func (g *GossipProtocol) Tick() []protocol.Envelope {
 	// pick a random peer and send the digest message
 	peer, ok := g.pickRandomPeer()
 	if !ok {
-		logGossipf("[gossip] node %s tick %d: no peers to gossip with", g.nodeID, g.tick)
+		g.logGossipf("node %s tick %d: no peers to gossip with", g.nodeID, g.tick)
 		return nil
 	}
 
-	logGossipf("[gossip] node %s tick %d: sending digest with %d keys to %s", g.nodeID, g.tick, len(gm.Digest), peer)
+	// Create key summary for metadata
+	keys := make([]string, 0, len(gm.Digest))
+	for k := range gm.Digest {
+		keys = append(keys, k)
+	}
+	keyPrefix := "keys=["
+	if len(keys) > 0 {
+		keyPrefix += strings.Join(keys, ",")
+	}
+	keyPrefix += "]"
+	if len(keyPrefix) > 100 {
+		keyPrefix = keyPrefix[:97] + "..."
+	}
+
+	payload := protocol.EncodeJSON(gm)
+	g.logGossipf("node %s tick %d: sending digest with %d keys to %s (%d bytes)", g.nodeID, g.tick, len(gm.Digest), peer, len(payload))
+	g.logGossipf("TRACE:SEND:%s:%s:GOSSIP_DIGEST:%s:%d", g.nodeID, peer, keyPrefix, len(payload))
 
 	envelope := protocol.Envelope{
 		From:        g.nodeID,
@@ -96,29 +122,29 @@ func (g *GossipProtocol) OnMessage(env protocol.Envelope) []protocol.Envelope {
 
 	if senderID != "" && senderID != g.nodeID && !g.hasPeer(senderID) {
 		g.peers = append(g.peers, senderID)
-		logGossipf("[gossip] discovered new peer %s from incoming message", senderID)
+		g.logGossipf("discovered new peer %s from incoming message", senderID)
 
 		if g.peerDiscoveryCb != nil && senderHost != "" && senderPort > 0 {
 			g.peerDiscoveryCb.OnPeerDiscovered(senderID, senderHost, senderPort)
 		}
 	}
 
-	logGossipf("[gossip] node %s received %d bytes from %s at tick %d", g.nodeID, len(env.Payload), env.From, g.tick)
+	g.logGossipf("node %s received %d bytes from %s at tick %d", g.nodeID, len(env.Payload), env.From, g.tick)
 	msg, err := protocol.DecodeJSON[GossipMessage](env.Payload)
 	if err != nil {
-		logGossipf("[gossip] decode failed from %s: %v", env.From, err)
+		g.logGossipf("decode failed from %s: %v", env.From, err)
 		return nil
 	}
 
 	switch msg.Type {
 	case MsgDigest:
-		logGossipf("[gossip] handling DIGEST from %s (%d keys)", senderID, len(msg.Digest))
+		g.logGossipf("handling DIGEST from %s (%d keys)", senderID, len(msg.Digest))
 		return g.handleDigest(senderID, msg)
 	case MsgState:
-		logGossipf("[gossip] handling STATE from %s (%d keys)", senderID, len(msg.State))
+		g.logGossipf("handling STATE from %s (%d keys)", senderID, len(msg.State))
 		return g.handleState(msg)
 	default:
-		logGossipf("[gossip] unknown message type %q from %s", msg.Type, senderID)
+		g.logGossipf("unknown message type %q from %s", msg.Type, senderID)
 		return nil
 	}
 }
@@ -138,14 +164,23 @@ func (g *GossipProtocol) handleDigest(from string, msg GossipMessage) []protocol
 		remoteVer, ok := msg.Digest[key]
 		if !ok || localVal.Version > remoteVer {
 			stateMsg.State[key] = localVal
-		} else if ok && localVal.Version == remoteVer {
-			// Equal versions can still hide conflicts; send value so receiver can tie-break.
-			stateMsg.State[key] = localVal
 		}
 	}
 
 	if len(stateMsg.State) > 0 {
-		logGossipf("[gossip] sending STATE to %s with %d updated keys", from, len(stateMsg.State))
+		// Create state summary
+		updates := make([]string, 0, len(stateMsg.State))
+		for k, v := range stateMsg.State {
+			updates = append(updates, fmt.Sprintf("%s=%v", k, v.Data))
+		}
+		stateMeta := "updates={" + strings.Join(updates, ",") + "}"
+		if len(stateMeta) > 100 {
+			stateMeta = stateMeta[:97] + "..."
+		}
+
+		payload := protocol.EncodeJSON(stateMsg)
+		g.logGossipf("sending STATE to %s with %d updated keys (%d bytes)", from, len(stateMsg.State), len(payload))
+		g.logGossipf("TRACE:SEND:%s:%s:GOSSIP_STATE:%s:%d", g.nodeID, from, stateMeta, len(payload))
 		out = append(out, protocol.Envelope{
 			From:        g.nodeID,
 			To:          from,
@@ -168,22 +203,24 @@ func (g *GossipProtocol) handleDigest(from string, msg GossipMessage) []protocol
 
 	// ---------- 3. SEND DIGEST BACK (trigger reverse sync) ----------
 	if behind {
-		logGossipf("[gossip] local node %s is behind %s, requesting reverse sync", g.nodeID, from)
-		digest := make(map[string]int64)
-		for k, v := range g.store {
-			digest[k] = v.Version
-		}
-
+		g.logGossipf("local node %s is behind %s, requesting reverse sync", g.nodeID, from)
+		
 		digestMsg := GossipMessage{
 			Type:   MsgDigest,
-			Digest: digest,
+			Digest: make(map[string]int64),
 		}
-
+		for k, v := range g.store {
+			digestMsg.Digest[k] = v.Version
+		}
+		
+		payload := protocol.EncodeJSON(digestMsg)
+		g.logGossipf("TRACE:SEND:%s:%s:GOSSIP_SYNC_REQ:%d_keys:%d", g.nodeID, from, len(digestMsg.Digest), len(payload))
+		
 		out = append(out, protocol.Envelope{
 			From:        g.nodeID,
 			To:          from,
 			Protocol:    "gossip",
-			Payload:     protocol.EncodeJSON(digestMsg),
+			Payload:     payload,
 			Kind:        protocol.KindProtocol,
 			Version:     1,
 			LogicalTick: g.tick,
@@ -191,11 +228,11 @@ func (g *GossipProtocol) handleDigest(from string, msg GossipMessage) []protocol
 	}
 
 	if len(out) == 0 {
-		logGossipf("[gossip] no response needed for digest from %s", from)
+		g.logGossipf("no response needed for digest from %s", from)
 		return nil
 	}
 
-	logGossipf("[gossip] prepared %d outbound message(s) for %s", len(out), from)
+	g.logGossipf("prepared %d outbound message(s) for %s", len(out), from)
 
 	return out
 }
@@ -209,7 +246,7 @@ func (g *GossipProtocol) SetPeers(peers []string) {
 		}
 	}
 	g.peers = filtered
-	logGossipf("[gossip] SetPeers called for node %s: %v", g.nodeID, g.peers)
+	g.logGossipf("SetPeers called for node %s: %v", g.nodeID, g.peers)
 }
 
 // SetPeerDiscoveryCallback sets the callback for dynamic peer discovery.
@@ -227,7 +264,7 @@ func (g *GossipProtocol) handleState(msg GossipMessage) []protocol.Envelope {
 			updated++
 		}
 	}
-	logGossipf("[gossip] applied STATE update: %d/%d keys changed", updated, len(msg.State))
+	g.logGossipf("applied STATE update: %d/%d keys changed", updated, len(msg.State))
 	return nil // Left it we ennable PUSH PULL later
 }
 
@@ -239,7 +276,7 @@ func (g *GossipProtocol) State() any {
 }
 
 func (g *GossipProtocol) Stop() error {
-	logGossipf("[gossip] Stop called for node %s", g.nodeID)
+	g.logGossipf("Stop called for node %s", g.nodeID)
 	return nil
 }
 
@@ -249,7 +286,7 @@ func (g *GossipProtocol) pickRandomPeer() (string, bool) {
 		return "", false
 	}
 	peer := g.peers[rand.Intn(len(g.peers))]
-	logGossipf("[gossip] node %s: selected peer %s from %d available peers", g.nodeID, peer, len(g.peers))
+	g.logGossipf("node %s: selected peer %s from %d available peers", g.nodeID, peer, len(g.peers))
 	return peer, true // right now we are fanning out to single peers but we can send a list
 }
 
@@ -291,10 +328,10 @@ func (g *GossipProtocol) Put(key, data string) {
 	current, ok := g.store[key]
 	if !ok {
 		g.store[key] = Value{Data: data, Version: 1, NodeID: g.nodeID}
-		logGossipf("[gossip] PUT created key=%s version=%d", key, g.store[key].Version)
+		g.logGossipf("PUT created key=%s version=%d", key, g.store[key].Version)
 	} else {
 		g.store[key] = Value{Data: data, Version: current.Version + 1, NodeID: g.nodeID}
-		logGossipf("[gossip] PUT updated key=%s version=%d", key, g.store[key].Version)
+		g.logGossipf("PUT updated key=%s version=%d", key, g.store[key].Version)
 	}
 }
 
@@ -308,6 +345,10 @@ func isIncomingNewer(local, incoming Value) bool {
 	}
 	// tie-break
 	return incoming.NodeID > local.NodeID
+}
+
+func (g *GossipProtocol) SetLogger(l any) {
+	g.logger = l
 }
 
 func init() {

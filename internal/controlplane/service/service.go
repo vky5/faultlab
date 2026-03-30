@@ -95,6 +95,15 @@ func (s *Service) RegisterNode(
 	// update cluster state
 	s.cluster.RegisterNode(clusterID, nodeID, host, port)
 
+	// Visualize registration
+	s.BroadcastLog(&protocol.LogRequest{
+		ClusterId: clusterID,
+		NodeId:    "CP",
+		Level:     "INFO",
+		Message:   fmt.Sprintf("TRACE:SEND:CP:%s:CP_REGISTRATION", nodeID),
+		Timestamp: time.Now().Unix(),
+	})
+
 	return nil
 }
 
@@ -134,6 +143,17 @@ func (s *Service) ExecuteKVPut(ctx context.Context, clusterID, nodeID, key, valu
 		return fmt.Errorf("kv-put rejected: %s", resp.GetMessage())
 	}
 
+	// Visualize KV Update signaling
+	// payload size is apprx len(key) + len(value) + json overhead
+	size := len(key) + len(value) + 64 
+	s.BroadcastLog(&protocol.LogRequest{
+		ClusterId: clusterID,
+		NodeId:    "CP",
+		Level:     "INFO",
+		Message:   fmt.Sprintf("TRACE:SEND:CP:%s:CP_KV_PUT:%s=%s:%d", nodeID, key, value, size),
+		Timestamp: time.Now().Unix(),
+	})
+
 	return nil
 }
 
@@ -165,6 +185,16 @@ func (s *Service) ExecuteKVGet(ctx context.Context, clusterID, nodeID, key strin
 	if err := gproto.Unmarshal(resp.GetPayload(), &out); err != nil {
 		return "", fmt.Errorf("decode kv-get response: %w", err)
 	}
+
+	// Visualize KV Get signaling
+	size := len(key) + 32
+	s.BroadcastLog(&protocol.LogRequest{
+		ClusterId: clusterID,
+		NodeId:    "CP",
+		Level:     "INFO",
+		Message:   fmt.Sprintf("TRACE:SEND:CP:%s:CP_KV_GET:%s:%d", nodeID, key, size),
+		Timestamp: time.Now().Unix(),
+	})
 
 	return out.GetValue(), nil
 }

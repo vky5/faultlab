@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useRef } from "react";
-import { Activity, Cpu, Crown, Zap } from "lucide-react";
+import { Activity, Cpu, Crown, Server, Zap } from "lucide-react";
 import { NodeInfo, useClusterStore } from "../store";
 
 export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ w: 0, h: 0 });
-  const { raftState, messages, isSimulationRunning } = useClusterStore();
+  const { raftState, messages, isSimulationRunning, isPaused } = useClusterStore();
+  const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
   
   // STABLE POSITION MAP - keyed by node ID
   const nodePositions = useRef<Map<string, { angle: number; x: number; y: number }>>(new Map());
@@ -67,9 +68,18 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
     };
   }).filter(Boolean) as Array<NodeInfo & { x: number; y: number }>;
 
+  // Control Plane Node (Virtual node at center)
+  const cpNode = {
+    id: "CP",
+    x: centerX,
+    y: centerY,
+    status: "active" as const
+  };
+
   // Create edges - connect ALL nodes (complete graph)
   const edges: Array<{ source: any; target: any; id: string }> = [];
   for (let i = 0; i < positionedNodes.length; i++) {
+    // Connect to other nodes
     for (let j = i + 1; j < positionedNodes.length; j++) {
       edges.push({
         source: positionedNodes[i],
@@ -77,6 +87,12 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
         id: `${positionedNodes[i].id}-${positionedNodes[j].id}`,
       });
     }
+    // Connect to Control Plane
+    edges.push({
+      source: cpNode,
+      target: positionedNodes[i],
+      id: `CP-${positionedNodes[i].id}`,
+    });
   }
 
   if (nodes.length === 0) {
@@ -92,8 +108,25 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
 
   return (
     <div ref={containerRef} className="w-full h-full relative z-10">
-      <svg className="absolute inset-0 w-full h-full overflow-visible pointer-events-none">
+      <svg className="absolute inset-0 w-full h-full overflow-visible pointer-events-none z-30">
         <defs>
+          {/* Hexagon Clip Path for CP (Reserved) */}
+          <clipPath id="hexagonClip">
+            <polygon points="32,0 60,16 60,48 32,64 4,48 4,16" />
+          </clipPath>
+
+          {/* Premium Gradient for Hubs */}
+          <linearGradient id="hubGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#4f46e5" />
+            <stop offset="100%" stopColor="#1e1b4b" />
+          </linearGradient>
+
+          {/* Neon Glow filters */}
+          <filter id="neonGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+
           {/* Arrow markers */}
           <marker id="arrowhead" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
             <polygon points="0 0, 6 3, 0 6" fill="currentColor" className="text-primary/40" />
@@ -123,38 +156,18 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
               />
               
               {/* Animated pulse dots (only on active connections) */}
-              {!isBroken && (
-                <>
-                  {/* Pulse traveling from source to target */}
-                  <circle r="3" fill="var(--primary)" opacity="0.5">
-                    <animateMotion
-                      dur="2s"
-                      repeatCount="indefinite"
-                      path={`M ${edge.source.x} ${edge.source.y} L ${edge.target.x} ${edge.target.y}`}
-                    />
-                  </circle>
-                  {/* Pulse traveling from target to source (offset timing) */}
-                  <circle r="3" fill="var(--primary)" opacity="0.5">
-                    <animateMotion
-                      dur="2s"
-                      repeatCount="indefinite"
-                      path={`M ${edge.target.x} ${edge.target.y} L ${edge.source.x} ${edge.source.y}`}
-                      begin="1s"
-                    />
-                  </circle>
-                </>
-              )}
+              {/* Background pulses removed to focus on protocol messages */}
             </g>
           );
         })}
 
         {/* Render Simulated Messages - ONLY from ALIVE nodes */}
         {isSimulationRunning && messages.map((msg, idx) => {
-          const src = positionedNodes.find(n => n.id === msg.sourceId);
-          const tgt = positionedNodes.find(n => n.id === msg.targetId);
+          const src = msg.sourceId === "CP" ? cpNode : positionedNodes.find(n => n.id === msg.sourceId);
+          const tgt = msg.targetId === "CP" ? cpNode : positionedNodes.find(n => n.id === msg.targetId);
           
           // Skip if source or target not found, or if source is crashed
-          if (!src || !tgt || src.status === "crashed") return null;
+          if (!src || !tgt || (src.id !== "CP" && (src as any).status === "crashed")) return null;
 
           // Calculate position along straight line
           const t = msg.progress;
@@ -165,6 +178,8 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
           const dx = tgt.x - src.x;
           const dy = tgt.y - src.y;
           const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+          const isHovered = hoveredMessageId === msg.id;
 
           // Color based on message type
           let color = "#f43f5e"; // rose for heartbeat
@@ -185,72 +200,119 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
               glowColor = "#94a3b8";
               orbSize = 5;
             }
+          } else if (msg.type === "GOSSIP_DIGEST") {
+            color = "#eab308"; // yellow-500
+            glowColor = "#fde047"; // yellow-400
+            orbSize = 5;
+          } else if (msg.type === "GOSSIP_STATE") {
+            color = "#10b981"; // emerald-500
+            glowColor = "#34d399"; // emerald-400
+            orbSize = 7;
+          } else if (msg.type === "GOSSIP_SYNC_REQ") {
+            color = "#3b82f6"; // blue-500
+            glowColor = "#60a5fa"; // blue-400
+            orbSize = 6;
+          } else if (msg.type === "CP_REGISTRATION") {
+            color = "#a855f7"; // purple-500
+            glowColor = "#c084fc"; // purple-400
+            orbSize = 8;
+          } else if (msg.type === "CP_KV_PUT") {
+            color = "#0ea5e9"; // sky-500
+            glowColor = "#38bdf8"; // sky-400
+            orbSize = 8;
+          } else if (msg.type === "CP_KV_GET") {
+            color = "#f97316"; // orange-500
+            glowColor = "#fb923c"; // orange-400
+            orbSize = 8;
           }
 
+          const isSelected = useClusterStore.getState().selectedMessageId === msg.id;
+
           return (
-            <g key={`${msg.id}-${idx}`} style={{ transform: `rotate(${angle}deg)`, transformOrigin: `${x}px ${y}px` }}>
-              {/* Trailing glow tail */}
-              {t > 0.1 && t < 0.95 && (
-                <ellipse
-                  cx={x - Math.cos(angle * Math.PI / 180) * 10}
-                  cy={y - Math.sin(angle * Math.PI / 180) * 10}
-                  rx={orbSize * 1.5}
-                  ry={orbSize * 0.8}
-                  fill={glowColor}
-                  opacity={0.3 * (1 - t)}
-                  style={{ filter: `blur(4px)` }}
+            <g 
+              key={`${msg.id}-${idx}`} 
+              onClick={(e) => {
+                e.stopPropagation();
+                useClusterStore.getState().setSelectedMessageId(msg.id);
+              }}
+              onMouseEnter={() => isPaused && setHoveredMessageId(msg.id)}
+              onMouseLeave={() => setHoveredMessageId(null)}
+              className="pointer-events-auto cursor-pointer"
+            >
+              {/* NO TAIL: Removed per user request */}
+              
+              {/* Outer neon glow */}
+              <circle
+                cx={x}
+                cy={y}
+                r={orbSize + (isHovered || isSelected ? 18 : 14)}
+                fill={color}
+                opacity={isHovered || isSelected ? "0.4" : (t > 0.92 ? 0 : "0.2")}
+                style={{ filter: `blur(12px)`, transition: "opacity 0.2s" }}
+              />
+              
+              {/* Static selection halo (fixed 'flying orb' bug) */}
+              {isSelected && (
+                <circle
+                  cx={x}
+                  cy={y}
+                  r={orbSize + 10}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth="2"
+                  opacity="0.6"
                 />
               )}
-              
-              {/* Outer glow ring */}
+
+              {/* Core neon orb */}
               <circle
                 cx={x}
                 cy={y}
-                r={orbSize + 12}
-                fill={glowColor}
-                opacity="0.15"
-                style={{ filter: `blur(8px)` }}
+                r={orbSize + (isHovered || isSelected ? 3 : 1)}
+                fill="white"
+                opacity={t > 0.92 ? 0 : "0.3"}
+                style={{ filter: "blur(2px)", transition: "opacity 0.2s" }}
               />
-              
-              {/* Middle glow ring */}
-              <circle
-                cx={x}
-                cy={y}
-                r={orbSize + 7}
-                fill={glowColor}
-                opacity="0.3"
-                style={{ filter: `blur(5px)` }}
-              />
-              
-              {/* Inner glow */}
-              <circle
-                cx={x}
-                cy={y}
-                r={orbSize + 3}
-                fill={glowColor}
-                opacity="0.5"
-                style={{ filter: `blur(3px)` }}
-              />
-              
-              {/* Core colored orb */}
+
               <circle
                 cx={x}
                 cy={y}
                 r={orbSize}
                 fill={color}
-                style={{
-                  filter: `drop-shadow(0 0 8px ${glowColor}) drop-shadow(0 0 16px ${glowColor})`,
+                className="shadow-2xl transition-opacity duration-200"
+                opacity={t > 0.92 ? 0 : 1}
+                style={{ 
+                  filter: "drop-shadow(0 0 10px " + color + ")",
+                  stroke: isSelected ? "white" : "none",
+                  strokeWidth: 2
                 }}
               />
-              
-              {/* Bright white core */}
-              <circle
-                cx={x}
-                cy={y}
-                r={orbSize * 0.45}
-                fill="white"
-                opacity="0.95"
-              />
+
+              {/* Hover Label */}
+              {isHovered && isPaused && (
+                <g>
+                  <rect
+                    x={x + 15}
+                    y={y - 12}
+                    width={msg.type.length * 7 + 25}
+                    height={28}
+                    rx={8}
+                    fill="rgba(15, 23, 42, 0.95)"
+                    className="backdrop-blur-md shadow-2xl border border-white/20"
+                  />
+                  <text
+                    x={x + 25}
+                    y={y + 6}
+                    fill="white"
+                    fontSize="11"
+                    fontWeight="700"
+                    className="font-mono tracking-tight"
+                  >
+                    {msg.type}
+                  </text>
+                  <circle cx={x + 20} cy={y + 2} r="2" fill={color} />
+                </g>
+              )}
             </g>
           );
         })}
@@ -296,6 +358,25 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
             </g>
           );
         })}
+        {/* Control Plane Hub (Center) - Match Standard Node Design Exactly */}
+        <foreignObject x={centerX - 40} y={centerY - 40} width={80} height={100} className="pointer-events-auto">
+          <div className="w-full h-full flex flex-col items-center justify-center transition-all duration-500">
+            {/* Base box - EXACT same style as nodes but slightly larger icon */}
+            <div className="w-[66px] h-[66px] rounded-2xl border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-[0_0_15px_rgba(30,58,138,0.1)] flex flex-col items-center justify-center overflow-hidden">
+              <Server className="w-8 h-8 text-primary/80 dark:text-primary mb-0.5" />
+            </div>
+
+            {/* Simple text label - same as nodes */}
+            <div className="mt-1.5 flex flex-col items-center">
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-900 dark:text-slate-100">
+                CONTROL PLANE
+              </span>
+              <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase flex items-center gap-1">
+                <div className="w-1 h-1 rounded-full bg-success" /> Hub
+              </span>
+            </div>
+          </div>
+        </foreignObject>
       </svg>
 
       {/* Render Nodes */}
@@ -380,47 +461,155 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
         );
       })}
       
+      {/* Message Inspector Panel */}
+      {(() => {
+        const selectedMessage = messages.find(m => m.id === useClusterStore.getState().selectedMessageId);
+        if (!selectedMessage) return null;
+        
+        return (
+          <div className="absolute top-4 right-4 w-72 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-4 duration-300">
+            <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+              <div className="flex items-center gap-2">
+                <div 
+                  className="w-2 h-2 rounded-full" 
+                  style={{ backgroundColor: 
+                    selectedMessage.type.includes("GOSSIP") ? "#eab308" : 
+                    selectedMessage.type.includes("CP") ? "#3b82f6" : "#f43f5e" 
+                  }} 
+                />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Message Detail</span>
+              </div>
+              <button 
+                onClick={() => useClusterStore.getState().setSelectedMessageId(null)}
+                className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors"
+              >
+                <div className="w-4 h-4 text-slate-400">✕</div>
+              </button>
+            </div>
+            
+            <div className="p-4 space-y-5">
+              {/* Telemetry Row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                    <Activity className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Timing</div>
+                    <div className="text-[11px] font-mono font-bold text-slate-700 dark:text-slate-200">
+                      T + {selectedMessage.timestampMs ? Math.max(0, Math.floor(Date.now() - selectedMessage.timestampMs)) : "0"}ms
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                    <div className="text-[10px] font-bold underline decoration-2">KB</div>
+                  </div>
+                  <div>
+                    <div className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Transit</div>
+                    <div className="text-[11px] font-mono font-bold text-slate-700 dark:text-slate-200">
+                      {selectedMessage.sizeBytes ? (
+                        selectedMessage.sizeBytes > 1024 
+                          ? (selectedMessage.sizeBytes / 1024).toFixed(1) + " KB" 
+                          : selectedMessage.sizeBytes + " B"
+                      ) : "64 B"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div className="text-[9px] font-bold text-slate-400 uppercase mb-2 tracking-widest">Protocol Type</div>
+                <div className="text-sm font-black text-primary font-mono bg-primary/5 px-3 py-2 rounded-lg border border-primary/10 inline-block shadow-sm">
+                  {selectedMessage.type}
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-4 py-2 border-y border-slate-100 dark:border-slate-800">
+                <div className="flex-1">
+                  <div className="text-[8px] font-bold text-slate-400 uppercase mb-1">Source</div>
+                  <div className="text-xs font-black text-slate-700 dark:text-slate-200">{selectedMessage.sourceId}</div>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                  <div className="w-4 h-0.5 bg-slate-300 dark:bg-slate-600 rounded-full" />
+                </div>
+                <div className="flex-1 text-right">
+                  <div className="text-[8px] font-bold text-slate-400 uppercase mb-1">Recipient</div>
+                  <div className="text-xs font-black text-slate-700 dark:text-slate-200">{selectedMessage.targetId}</div>
+                </div>
+              </div>
+
+              {selectedMessage.metadata ? (
+                <div>
+                  <div className="text-[9px] font-bold text-slate-400 uppercase mb-2 tracking-widest flex justify-between">
+                    <span>Payload Information</span>
+                    <span className="text-emerald-500 font-mono opacity-50">TRACE://DATA</span>
+                  </div>
+                  <div className="text-[11px] font-mono p-4 bg-slate-900 text-emerald-400 rounded-xl overflow-x-auto border border-white/5 shadow-2xl relative leading-relaxed">
+                    <div className="absolute top-2 right-2 opacity-10 text-[7px] uppercase font-bold text-emerald-500 select-none">
+                      Secured Intercept
+                    </div>
+                    <span className="text-emerald-500/40 mr-2 select-none">❯</span>
+                    <span className="break-all whitespace-pre-wrap">
+                      {selectedMessage.metadata.replace(/_/g, ' ')}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-[10px] text-slate-500 italic p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 text-center">
+                  Base heartbeat – No extra data payload.
+                </div>
+              )}
+            </div>
+            
+            <div className="px-4 py-2 bg-slate-50/50 dark:bg-slate-800/30 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2 text-[10px] text-slate-500 italic">
+              <Activity className="w-3 h-3 text-primary/60" />
+              <span>Real-time simulation interceptor active</span>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Legend and Stats */}
-      {isSimulationRunning && (
-        <div className="absolute bottom-4 right-4 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm border border-slate-200 dark:border-slate-700 rounded-xl p-4 shadow-xl">
-          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">Messages</div>
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-rose-500" style={{ filter: "drop-shadow(0 0 6px #f43f5e)" }} />
-              <span className="text-xs text-slate-600 dark:text-slate-400">Heartbeat</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-blue-500" style={{ filter: "drop-shadow(0 0 6px #3b82f6)" }} />
-              <span className="text-xs text-slate-600 dark:text-slate-400">Vote Request</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" style={{ filter: "drop-shadow(0 0 6px #10b981)" }} />
-              <span className="text-xs text-slate-600 dark:text-slate-400">Vote Granted</span>
-            </div>
+      <div className="absolute bottom-4 right-4 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm border border-slate-200 dark:border-slate-700 rounded-xl p-4 shadow-xl pointer-events-auto">
+        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">Protocol Messages</div>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" style={{ filter: "drop-shadow(0 0 6px #eab308)" }} />
+            <span className="text-[11px] text-slate-600 dark:text-slate-400">Gossip Digest</span>
           </div>
-          <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
-            <div className="text-xs text-slate-500">
-              Active: <span className="font-mono font-bold text-primary">{messages.length}</span>
-            </div>
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" style={{ filter: "drop-shadow(0 0 6px #10b981)" }} />
+            <span className="text-[11px] text-slate-600 dark:text-slate-400">Gossip State</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-blue-500" style={{ filter: "drop-shadow(0 0 6px #3b82f6)" }} />
+            <span className="text-[11px] text-slate-600 dark:text-slate-400">Sync Request</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-purple-500" style={{ filter: "drop-shadow(0 0 6px #a855f7)" }} />
+            <span className="text-[11px] text-slate-600 dark:text-slate-400">Node Reg</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-sky-500" style={{ filter: "drop-shadow(0 0 6px #0ea5e9)" }} />
+            <span className="text-[11px] text-slate-600 dark:text-slate-400">KV Put (CP)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-orange-500" style={{ filter: "drop-shadow(0 0 6px #f97316)" }} />
+            <span className="text-[11px] text-slate-600 dark:text-slate-400">KV Get (CP)</span>
           </div>
         </div>
-      )}
+        <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
+          <div className="text-[10px] text-slate-500 font-medium">
+            In-flight: <span className="font-mono font-bold text-primary">{messages.length}</span>
+          </div>
+          <div className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-tighter ${isPaused ? "bg-warning/20 text-warning" : "bg-success/20 text-success"}`}>
+            {isPaused ? "Paused" : "Live"}
+          </div>
+        </div>
+      </div>
       
-      {!isSimulationRunning && nodes.length > 0 && (
-        <div className="absolute bottom-4 right-4 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm border border-slate-200 dark:border-slate-700 rounded-xl p-4 shadow-xl max-w-xs">
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <Activity className="w-4 h-4 text-primary" />
-            </div>
-            <div>
-              <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">Enable Simulation</div>
-              <p className="text-xs text-slate-500 mt-1">
-                Toggle "Run Raft Simulation" in the sidebar to see live message flow between nodes.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

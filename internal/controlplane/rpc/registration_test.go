@@ -124,6 +124,10 @@ func (m *mockNodeClient) Ping(ctx context.Context, host string, port int) error 
 	return nil
 }
 
+func (m *mockNodeClient) ExecuteAction(ctx context.Context, host string, port int, req *pb.ActionRequest) (*pb.ActionResponse, error) {
+	return &pb.ActionResponse{Success: true}, nil
+}
+
 type mockNodeServer struct {
 	pb.UnimplementedNodeServiceServer
 }

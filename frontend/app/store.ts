@@ -34,10 +34,13 @@ export interface SimulatedMessage {
   id: string;
   sourceId: string;
   targetId: string;
-  type: 'heartbeat' | 'vote_request' | 'vote_reply';
+  type: string;
   progress: number;
   term: number;
   voteGranted?: boolean;
+  metadata?: string;
+  sizeBytes?: number;
+  timestampMs?: number;
 }
 
 const API_BASE = "http://localhost:8080/api";
@@ -54,6 +57,8 @@ interface ClusterStore {
   showTimers: boolean;
 
   isSimulationRunning: boolean;
+  isPaused: boolean;
+  selectedMessageId: string | null;
   raftState: Record<string, NodeRaftState>;
   messages: SimulatedMessage[];
 
@@ -71,11 +76,16 @@ interface ClusterStore {
   getNodeStatus: (node: NodeInfo) => "active" | "crashed";
 
   toggleSimulation: () => void;
+  togglePause: () => void;
   initRaftState: () => void;
   tickSimulation: (deltaMs: number) => void;
+  setSelectedMessageId: (id: string | null) => void;
 
   connectLiveStream: (clusterId: string) => void;
   disconnectLiveStream: () => void;
+
+  handleKVPut: (clusterId: string, nodeId: string, key: string, value: string) => Promise<boolean>;
+  handleKVGet: (clusterId: string, nodeId: string, key: string) => Promise<string | null>;
 }
 
 let activeEventSource: EventSource | null = null;
@@ -89,7 +99,9 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
   selectedClusterId: null,
   showTimers: false,
 
-  isSimulationRunning: false,
+  isSimulationRunning: true, // Start running by default
+  isPaused: false,
+  selectedMessageId: null,
   raftState: {},
   messages: [],
 
@@ -98,12 +110,19 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
       const res = await fetch(`${API_BASE}/clusters`);
       if (res.ok) {
         const data = await res.json();
-        set((state) => ({
-          clusters: data || [],
-          selectedClusterId: !state.selectedClusterId && data && data.length > 0 
-            ? data[0].id 
-            : state.selectedClusterId
-        }));
+        set((state) => {
+          const firstId = !state.selectedClusterId && data && data.length > 0 ? data[0].id : state.selectedClusterId;
+          
+          if (firstId && !state.selectedClusterId) {
+            // New selection on initial load, connect
+            setTimeout(() => get().connectLiveStream(firstId), 0);
+          }
+
+          return {
+            clusters: data || [],
+            selectedClusterId: firstId
+          };
+        });
       }
     } catch (err) {
       console.error("Failed to fetch clusters:", err);
@@ -112,7 +131,10 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
 
   setSelectedClusterId: (id) => {
     get().disconnectLiveStream();
-    set({ selectedClusterId: id, isSimulationRunning: false, messages: [] });
+    set({ selectedClusterId: id, messages: [] });
+    if (id) {
+      get().connectLiveStream(id);
+    }
   },
 
   handleCrashNode: async (clusterId, nodeId) => {
@@ -276,6 +298,10 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
     set({ isSimulationRunning: running, messages: [] });
   },
 
+  togglePause: () => set((state) => ({ isPaused: !state.isPaused })),
+
+  setSelectedMessageId: (id) => set({ selectedMessageId: id }),
+
   initRaftState: () => {
     const { clusters, selectedClusterId } = get();
     const cluster = clusters.find(c => c.id === selectedClusterId);
@@ -315,31 +341,41 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
         const log = JSON.parse(event.data);
         console.log("[SSE] Received log:", log);
 
-        if (log.message && log.message.startsWith("TRACE:SEND:")) {
-          const parts = log.message.split(":");
-          console.log("[SSE] TRACE:SEND parts:", parts);
+        const rawMsg = log.message || log.Message || "";
+        if (rawMsg.includes("TRACE:SEND:")) {
+          if (get().isPaused) return; // Ignore new messages while paused to prevent backlog burst
+          
+          const parts = rawMsg.split(":");
           if (parts.length >= 4) {
-            const sourceId = parts[2];
-            const targetId = parts[3];
+            const sourceId = parts[2]?.trim();
+            const targetId = parts[3]?.trim();
+            const msgType = parts[4]?.trim() || 'heartbeat';
+            const metadata = parts[5]?.trim();
+            const sizeBytes = parseInt(parts[6]?.trim() || '0', 10);
             
-            // Check if source node is crashed - don't show messages from dead nodes
-            const { localStatuses, clusters, selectedClusterId } = get();
-            const cluster = clusters.find(c => c.id === clusterId);
-            const sourceNode = cluster?.nodes.find(n => n.id === sourceId);
-            const sourceStatus = localStatuses[sourceId] || sourceNode?.status || "active";
-            
-            if (sourceStatus === "crashed") {
-              console.log("[SSE] Skipping message from crashed node:", sourceId);
-              return;
+            // Check if source node is crashed - don't show messages from dead nodes (unless it is CP)
+            const { localStatuses, clusters } = get();
+            if (sourceId !== "CP") {
+              const cluster = clusters.find(c => c.id === clusterId);
+              const sourceNode = cluster?.nodes.find(n => n.id === sourceId);
+              const sourceStatus = localStatuses[sourceId] || sourceNode?.status || "active";
+              
+              if (sourceStatus === "crashed") {
+                console.log("[SSE] Skipping message from crashed node:", sourceId);
+                return;
+              }
             }
 
             const msg: SimulatedMessage = {
               id: nextId(),
               sourceId,
               targetId,
-              type: 'heartbeat',
+              type: msgType,
               term: 0,
-              progress: 0
+              progress: 0,
+              metadata,
+              sizeBytes,
+              timestampMs: (log.timestamp || log.Timestamp || Date.now() / 1000) * 1000
             };
 
             console.log("[SSE] Creating message:", msg);
@@ -366,12 +402,11 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
     }
   },
 
-  tickSimulation: (deltaMs) => {
+  tickSimulation: (deltaMs: number) => {
     const state = get();
-    if (!state.isSimulationRunning) return;
+    if (!state.isSimulationRunning || state.isPaused) return;
 
     const newMessages = [...state.messages];
-
     const inFlightMessages: SimulatedMessage[] = [];
 
     newMessages.forEach(msg => {
@@ -382,5 +417,33 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
     });
 
     set({ messages: inFlightMessages });
+  },
+
+  handleKVPut: async (clusterId: string, nodeId: string, key: string, value: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/clusters/${clusterId}/nodes/${nodeId}/kv`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, value }),
+      });
+      return res.ok;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
+  },
+
+  handleKVGet: async (clusterId: string, nodeId: string, key: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/clusters/${clusterId}/nodes/${nodeId}/kv/${key}`);
+      if (res.ok) {
+        const data = await res.json();
+        return data.value;
+      }
+      return null;
+    } catch (err) {
+      console.error(err);
+      return null;
+    }
   }
 }));

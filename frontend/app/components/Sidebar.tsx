@@ -3,7 +3,7 @@ import { Plus, Server, Network, ChevronRight } from "lucide-react";
 import { useClusterStore } from "../store";
 
 export function Sidebar() {
-  const { clusters, selectedClusterId, setSelectedClusterId, handleCreateCluster, isSimulationRunning, toggleSimulation } = useClusterStore();
+  const { clusters, selectedClusterId, setSelectedClusterId, handleCreateCluster, isSimulationRunning, isPaused, togglePause } = useClusterStore();
   const [isCreatingCluster, setIsCreatingCluster] = useState(false);
   const [newClusterId, setNewClusterId] = useState("");
   const [newClusterProtocol, setNewClusterProtocol] = useState("gossip");
@@ -139,30 +139,29 @@ export function Sidebar() {
       {/* Bottom Actions */}
       <div className="p-4 border-t border-border/50 bg-gradient-to-t from-muted/30 to-transparent">
         <div className="space-y-2">
-          <label className="flex items-center justify-between p-3 rounded-xl border border-border bg-card hover:border-primary/30 transition-all cursor-pointer group">
+          <button 
+            onClick={togglePause}
+            className={`flex items-center justify-between w-full p-3 rounded-xl border transition-all group ${
+              isPaused 
+                ? "bg-warning/10 border-warning/30 text-warning" 
+                : "bg-card border-border hover:border-primary/30"
+            }`}
+          >
             <div className="flex items-center gap-3">
               <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
-                isSimulationRunning 
-                  ? "bg-primary/10 text-primary" 
-                  : "bg-muted text-muted-foreground group-hover:bg-primary/5 group-hover:text-primary"
+                isPaused 
+                  ? "bg-warning/20 text-warning" 
+                  : "bg-primary/10 text-primary group-hover:bg-primary/20"
               }`}>
-                <Network className="w-4 h-4" />
+                <Network className={`w-4 h-4 ${isPaused ? "animate-pulse" : ""}`} />
               </div>
               <div>
-                <span className="text-sm font-medium">Simulation</span>
-                <p className="text-[10px] text-muted-foreground">Raft visualization</p>
+                <span className="text-sm font-medium">{isPaused ? "Paused" : "Live"}</span>
+                <p className="text-[10px] text-muted-foreground">{isPaused ? "Click to resume" : "Simulation running"}</p>
               </div>
             </div>
-            <div className="relative">
-              <input
-                type="checkbox"
-                checked={isSimulationRunning}
-                onChange={toggleSimulation}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-muted peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-            </div>
-          </label>
+            <div className={`w-2 h-2 rounded-full ${isPaused ? "bg-warning" : "bg-success"} animate-pulse`} />
+          </button>
           
           <div className="text-[10px] text-center text-muted-foreground/60 pt-2">
             Faultlab v1.0

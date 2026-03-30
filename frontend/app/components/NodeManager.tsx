@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { Plus, Trash2, ShieldAlert, Zap, PowerOff, RotateCcw, Activity, Network, Clock, Droplets, X } from "lucide-react";
+import { Plus, Trash2, ShieldAlert, Zap, PowerOff, RotateCcw, Activity, Network, Clock, Droplets, X, Database } from "lucide-react";
 import { useClusterStore, ClusterInfo } from "../store";
+import { KVManager } from "./KVManager";
 
 export function NodeManager({ selectedCluster }: { selectedCluster: ClusterInfo }) {
   const {
@@ -296,6 +297,10 @@ export function NodeManager({ selectedCluster }: { selectedCluster: ClusterInfo 
                             <span className="text-xs text-muted-foreground italic">No other nodes to partition</span>
                           )}
                         </div>
+                      </div>
+                      {/* KV State Management */}
+                      <div className="pt-3 border-t border-border/30">
+                        <KVManager clusterId={selectedCluster.id} nodeId={node.id} />
                       </div>
                     </div>
                   )}

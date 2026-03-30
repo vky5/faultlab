@@ -166,78 +166,68 @@ list-clusters
 ### System Overview Diagram
 
 ```mermaid
-graph TB
-    User[("👤 User")]
-    CLI["CLI Interface"]
-    REST["REST API (port 8080)"]
-    Frontend["Next.js Frontend"]
-    
-    subgraph ControlPlane ["ControlPlane Process (port 9000)"]
-        Actor["Actor<br/>(Command Queue)"]
-        Service["Service Layer<br/>(Business Logic)"]
-        Manager["Manager<br/>(State Storage)"]
-        RPC["gRPC Server<br/>(OrchestratorService)"]
-        Cleanup["Cleanup Goroutine<br/>(Heartbeat Timeout)"]
+graph LR
+    User["User"]
+
+    subgraph Entry ["Entry Points"]
+        CLI["CLI"]
+        REST["REST API :8080"]
+        Web["Web UI (Next.js)"]
     end
-    
-    subgraph Node1 ["Node Process 1 (port 7001)"]
-        Runtime1["Runtime"]
-        Driver1["ProtocolDriver"]
-        Protocol1["BaselineProtocol"]
-        GRPCServer1["gRPC Server<br/>(NodeService)"]
-        Session1["Node Sessions<br/>(RPC Clients)"]
+
+    subgraph CP ["ControlPlane"]
+        Parser["Command Parser"]
+        Actor["Actor Queue"]
+        Service["Service Layer"]
+        Manager["Cluster Manager + Heartbeats"]
+        CPRPC["gRPC Orchestrator :9000"]
     end
-    
-    subgraph Node2 ["Node Process 2 (port 7002)"]
-        Runtime2["Runtime"]
-        Driver2["ProtocolDriver"]
-        Protocol2["BaselineProtocol"]
-        GRPCServer2["gRPC Server<br/>(NodeService)"]
-        Session2["Node Sessions<br/>(RPC Clients)"]
+
+    subgraph Node ["Node Runtime (N nodes)"]
+        Runtime["Runtime + Reactor"]
+        Driver["Protocol Driver"]
+        Protocol["Protocol Impl\n(Baseline or Gossip)"]
+        NodeRPC["gRPC Node Service"]
     end
-    
-    CPSession1["ControlPlane<br/>Session 1"]
-    CPSession2["ControlPlane<br/>Session 2"]
-    
-    User -->|commands| CLI
-    User -->|HTTP requests| REST
-    User -->|browser| Frontend
-    
-    CLI -->|parse & submit| Actor
-    REST -->|parse & submit| Actor
-    Frontend -->|REST calls| REST
-    
-    Actor -->|execute| Service
-    Service -->|read/write| Manager
-    Service -->|RPC calls| Session1
-    Service -->|RPC calls| Session2
-    
-    RPC -->|receives| Service
-    Manager -->|monitors| Cleanup
-    
-    CPSession1 -->|RegisterNode<br/>Heartbeat| RPC
-    CPSession2 -->|RegisterNode<br/>Heartbeat| RPC
-    
-    Runtime1 -->|drives| Driver1
-    Driver1 -->|tick events| Protocol1
-    Runtime1 -->|initializes| Session1
-    Session1 -->|peer envelopes| GRPCServer1
-    
-    Runtime2 -->|drives| Driver2
-    Driver2 -->|tick events| Protocol2
-    Runtime2 -->|initializes| Session2
-    Session2 -->|peer envelopes| GRPCServer2
-    
-    GRPCServer1 -.->|SendEnvelope| Session2
-    GRPCServer2 -.->|SendEnvelope| Session1
-    
-    Session1 -->|Handshake| GRPCServer2
-    Session2 -->|Handshake| GRPCServer1
-    
-    style ControlPlane fill:#e1f5ff
-    style Node1 fill:#f3e5f5
-    style Node2 fill:#f3e5f5
-    style User fill:#fff9c4
+
+    subgraph Mesh ["Cluster Communication"]
+        Sessions["ControlPlane Sessions"]
+        PeerMesh["Peer-to-Peer Sessions"]
+    end
+
+    User --> CLI
+    User --> REST
+    User --> Web
+    Web --> REST
+
+    CLI --> Parser
+    REST --> Parser
+    Parser --> Actor --> Service --> Manager
+    Service --> CPRPC
+
+    CPRPC <-->|control commands + heartbeat| NodeRPC
+    Runtime --> Driver --> Protocol --> Sessions --> NodeRPC
+    Sessions --> PeerMesh
+    PeerMesh <-->|envelopes| NodeRPC
+
+    classDef actor fill:#ffd166,stroke:#b7791f,stroke-width:2px,color:#1f2937;
+    classDef entry fill:#ffe9b3,stroke:#d97706,stroke-width:2px,color:#1f2937;
+    classDef control fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#0f172a;
+    classDef runtime fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d;
+    classDef comm fill:#f3e8ff,stroke:#9333ea,stroke-width:2px,color:#3b0764;
+    classDef endpoint fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d;
+
+    class User actor;
+    class CLI,REST,Web entry;
+    class Parser,Actor,Service,Manager,CPRPC control;
+    class Runtime,Driver,Protocol runtime;
+    class Sessions,PeerMesh comm;
+    class NodeRPC endpoint;
+
+    style Entry fill:#fff7e6,stroke:#f59e0b,stroke-width:2px
+    style CP fill:#eaf3ff,stroke:#3b82f6,stroke-width:2px
+    style Node fill:#edfff1,stroke:#22c55e,stroke-width:2px
+    style Mesh fill:#f8f0ff,stroke:#a855f7,stroke-width:2px
 ```
 
 ---

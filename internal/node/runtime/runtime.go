@@ -103,6 +103,11 @@ func (r *Runtime) Start(fe *fault.Engine) {
 		r.logger.Printf("Registered peer discovery callback")
 	}
 
+	if pWithLogging, ok := p.(proto.ClusterProtocolWithLogging); ok {
+		pWithLogging.SetLogger(r.logger)
+		r.logger.Printf("Registered remote logger for protocol")
+	}
+
 	if err := r.proto.Start(r.config.ID); err != nil {
 		log.Fatalf("failed to initialize the initial state of the protocol")
 	}

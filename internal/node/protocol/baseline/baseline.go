@@ -49,6 +49,8 @@ type BaselineProtocol struct {
 
 	// Callback for dynamic peer discovery
 	peerDiscoveryCb protocol.PeerDiscoveryCallback
+
+	logger *log.Logger
 }
 
 // creating a baseline
@@ -111,6 +113,10 @@ func (b *BaselineProtocol) Tick() []protocol.Envelope {
 				Protocol: "baseline",
 				Kind:     protocol.KindProtocol,
 				Payload:  []byte("HEARTBEAT"),
+			}
+
+			if b.logger != nil {
+				b.logger.Printf("TRACE:SEND:%s:%s:BASELINE_HEARTBEAT", b.nodeID, peer)
 			}
 
 			out = append(out, env)
@@ -248,6 +254,11 @@ func (b *BaselineProtocol) SetPeers(peers []string) {
 // SetPeerDiscoveryCallback sets the callback for dynamic peer discovery
 func (b *BaselineProtocol) SetPeerDiscoveryCallback(cb protocol.PeerDiscoveryCallback) {
 	b.peerDiscoveryCb = cb
+}
+
+// SetLogger injects a logger into the protocol.
+func (b *BaselineProtocol) SetLogger(l *log.Logger) {
+	b.logger = l
 }
 
 func (b *BaselineProtocol) makeMembershipEnvelope(

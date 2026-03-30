@@ -27,6 +27,12 @@ type ClusterProtocolWithDiscovery interface {
 	SetPeerDiscoveryCallback(cb PeerDiscoveryCallback)
 }
 
+// ClusterProtocolWithLogging extends ClusterProtocol with a logger.
+type ClusterProtocolWithLogging interface {
+	ClusterProtocol
+	SetLogger(logger any) // logger is expected to have Printf(format string, args ...any)
+}
+
 /*
 start() starts basic flow for any algo
 Tick is to change the clock for node  Advance logical time, not wall clock. (this is like a timer chain in engine for example after 5 ticks send heartbeat to control plane adn stuff liek that)

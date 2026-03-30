@@ -121,6 +121,10 @@ func (s *Server) HandleNodes(w http.ResponseWriter, r *http.Request) {
 		nodeID := parts[5]
 		s.heartbeat(w, r, clusterID, nodeID)
 		return
+	} else if (r.Method == http.MethodPost || r.Method == http.MethodGet) && len(parts) >= 7 && parts[6] == "kv" {
+		nodeID := parts[5]
+		s.handleKV(w, r, clusterID, nodeID)
+		return
 	}
 
 	http.Error(w, "method not allowed or invalid path", http.StatusBadRequest)
@@ -324,4 +328,65 @@ func (s *Server) streamLogs(w http.ResponseWriter, r *http.Request, clusterID st
 			}
 		}
 	}
+}
+
+type kvReq struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+func (s *Server) handleKV(w http.ResponseWriter, r *http.Request, clusterID, nodeID string) {
+	parts := strings.Split(r.URL.Path, "/")
+
+	if r.Method == http.MethodPost {
+		var req kvReq
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		cmd := controlplane.NewCommand(controlplane.CmdKVPut)
+		cmd.ClusterID = clusterID
+		cmd.NodeID = nodeID
+		cmd.Key = req.Key
+		cmd.Value = req.Value
+		s.actor.Submit(cmd)
+
+		_, err := cmd.MapWait()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		return
+	}
+
+	if r.Method == http.MethodGet {
+		// Expecting path like /api/clusters/:cid/nodes/:nid/kv/:key
+		if len(parts) < 8 {
+			http.Error(w, "key is required for GET /kv", http.StatusBadRequest)
+			return
+		}
+		key := parts[7]
+
+		cmd := controlplane.NewCommand(controlplane.CmdKVGet)
+		cmd.ClusterID = clusterID
+		cmd.NodeID = nodeID
+		cmd.Key = key
+		s.actor.Submit(cmd)
+
+		res, err := cmd.MapWait()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(res)
+		return
+	}
+
+	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 }
