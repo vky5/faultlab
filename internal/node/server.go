@@ -34,7 +34,7 @@ func NewServer(nc noderuntime) *grpc.Server {
 }
 
 func (n *NodeRPCServer) Ping(ctx context.Context, _ *protocol.PingRequest) (*protocol.PingResponse, error) {
-	if !n.nc.BeforeTick() {
+	if d := n.nc.BeforeTick(); !d.Allow {
 		return nil, status.Error(codes.Unavailable, "node is crashed")
 	}
 
@@ -44,7 +44,7 @@ func (n *NodeRPCServer) Ping(ctx context.Context, _ *protocol.PingRequest) (*pro
 }
 
 func (n *NodeRPCServer) Handshake(ctx context.Context, req *protocol.HandshakeRequest) (*protocol.HandshakeResponse, error) {
-	if !n.nc.BeforeTick() {
+	if d := n.nc.BeforeTick(); !d.Allow {
 		return nil, status.Error(codes.Unavailable, "node is crashed")
 	}
 
@@ -75,7 +75,7 @@ func (n *NodeRPCServer) SendEnvelope(
 	ctx context.Context,
 	req *protocol.EnvelopeRequest,
 ) (*protocol.EnvelopeAck, error) {
-	if !n.nc.BeforeTick() {
+	if d := n.nc.BeforeTick(); !d.Allow {
 		return nil, status.Error(codes.Unavailable, "node is crashed")
 	}
 
@@ -124,7 +124,7 @@ func (n *NodeRPCServer) ExecuteAction(
 	req *protocol.ActionRequest,
 ) (*protocol.ActionResponse, error) {
 
-	if !n.nc.BeforeTick() {
+	if d := n.nc.BeforeTick(); !d.Allow {
 		return nil, status.Error(codes.Unavailable, "node is crashed")
 	}
 

@@ -45,12 +45,27 @@ func (d *ProtocolDriver) Run(ctx context.Context, proto protocol.ClusterProtocol
 	for {
 		select {
 		case <-ticker.C:
-			if d.fault != nil && !d.fault.BeforeTick() {
+			tick := exec.TickDecision{Allow: true, Reason: "no-fault-decider"}
+			if d.fault != nil {
+				tick = d.fault.BeforeTick()
+			}
+			if !tick.Allow {
+				log.Printf("protocol tick skipped: reason=%s", tick.Reason)
 				continue
 			}
-			d.eventCh <- RuntimeEvent{
-				Type: EventTick,
+
+			if tick.Delay > 0 {
+				log.Printf("protocol tick delayed by %v", tick.Delay)
+				select {
+				case <-time.After(tick.Delay):
+				case <-ctx.Done():
+					return
+				case <-d.stopCh:
+					return
+				}
 			}
+
+			d.eventCh <- RuntimeEvent{Type: EventTick}
 		case <-d.stopCh:
 			return
 		}

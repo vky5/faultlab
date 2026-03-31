@@ -10,16 +10,16 @@ func (r *Runtime) BeforeSend(peer string) exec.SendDecision {
 	return r.fault.BeforeSend(peer)
 }
 
-func (r *Runtime) BeforeProbe(peer string) bool {
+func (r *Runtime) BeforeProbe(peer string) exec.ProbeDecision {
 	if r.fault == nil {
-		return true
+		return exec.ProbeDecision{Allow: true, Reason: "no-fault-engine"}
 	}
 	return r.fault.BeforeProbe(peer)
 }
 
-func (r *Runtime) BeforeTick() bool {
+func (r *Runtime) BeforeTick() exec.TickDecision {
 	if r.fault == nil {
-		return true
+		return exec.TickDecision{Allow: true, Reason: "no-fault-engine"}
 	}
 	return r.fault.BeforeTick()
 }

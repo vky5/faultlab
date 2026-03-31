@@ -1,3 +1,12 @@
+/*
+This is main system probing between different nodes and this is used for
+1. sending messages to other nodes
+2. probing other nodes to check if they are alive or not and update the peer state accordingly
+3. maintaining the connection with other nodes and close the connection if the peer is removed from the cluster
+
+This is for debugging and shouldnt be confused with main protocol implementation that is handled in different lifecycle by protocol driver itsel.f
+*/
+
 package session
 
 import (
@@ -76,10 +85,18 @@ func (ns *nodeSession) Send(ctx context.Context, env proto.Envelope) error {
 	if ns.fault != nil {
 		decision := ns.fault.BeforeSend(ps.id)
 		if !decision.Allow {
+			logSessionf("[node:%s] send blocked by fault: to=%s protocol=%s reason=%s\n", ns.nodeID, ps.id, env.Protocol, decision.Reason)
 			return nil
 		}
 		if decision.Delay > 0 {
-			time.Sleep(decision.Delay)
+			logSessionf("[node:%s] send delayed: to=%s protocol=%s delay=%v\n", ns.nodeID, ps.id, env.Protocol, decision.Delay)
+			select {
+			case <-time.After(decision.Delay):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		} else {
+			logSessionf("[node:%s] send no-delay: to=%s protocol=%s\n", ns.nodeID, ps.id, env.Protocol)
 		}
 	}
 	// ---------- END FAULT ----------
@@ -133,8 +150,23 @@ func (ns *nodeSession) Start(ctx context.Context) {
 			ns.closeAllConnections()
 			return
 		case <-ticker.C:
-			if ns.fault != nil && !ns.fault.BeforeTick() {
+			tick := exec.TickDecision{Allow: true, Reason: "no-fault-decider"}
+			if ns.fault != nil {
+				tick = ns.fault.BeforeTick()
+			}
+			if !tick.Allow {
+				logSessionf("[node:%s] probe loop tick blocked by fault: reason=%s\n", ns.nodeID, tick.Reason)
 				continue
+			}
+			if tick.Delay > 0 {
+				logSessionf("[node:%s] probe loop tick delayed by %v\n", ns.nodeID, tick.Delay)
+				select {
+				case <-time.After(tick.Delay):
+				case <-ctx.Done():
+					logSessionf("[node:%s] stopping probe loop\n", ns.nodeID)
+					ns.closeAllConnections()
+					return
+				}
 			}
 			ns.probeOnce(ctx) // send ping to all peers and updatre peer state accordingly
 		}
@@ -152,8 +184,17 @@ func (ns *nodeSession) probeOnce(ctx context.Context) {
 
 	logSessionf("[node:%s] probing %d peers...\n", ns.nodeID, len(peers))
 	for _, ps := range peers {
-		if ns.fault != nil && !ns.fault.BeforeProbe(ps.id) {
+		probe := exec.ProbeDecision{Allow: true, Reason: "no-fault-decider"}
+		if ns.fault != nil {
+			probe = ns.fault.BeforeProbe(ps.id)
+		}
+		if !probe.Allow {
+			logSessionf("[node:%s] probe blocked by fault: to=%s reason=%s\n", ns.nodeID, ps.id, probe.Reason)
 			continue
+		}
+		if probe.Delay > 0 {
+			logSessionf("[node:%s] probe delayed: to=%s delay=%v\n", ns.nodeID, ps.id, probe.Delay)
+			time.Sleep(probe.Delay)
 		}
 		// deterministic dialing: only owner initiates probes
 		if !shouldDial(ns.nodeID, ps.id) {

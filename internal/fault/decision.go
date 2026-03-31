@@ -2,51 +2,54 @@ package fault
 
 import "github.com/vky5/faultlab/internal/node/exec"
 
-// Decision APIs are the external contract consumed by components like session.
-// They translate current fault parameters into send/probe/tick gate outcomes.
+// Decision APIs are the external contract consumed by runtime and session.
+// This is the single source of truth for fault-order evaluation.
 func (e *Engine) BeforeSend(peer string) exec.SendDecision {
 	if e == nil {
-		return exec.SendDecision{Allow: true}
+		return exec.SendDecision{Allow: true, Reason: "no-fault-engine"}
 	}
 
 	if e.IsCrashed() {
-		return exec.SendDecision{Allow: false}
+		return exec.SendDecision{Allow: false, Reason: "crashed"}
 	}
 
 	if e.IsPartitioned(peer) {
-		return exec.SendDecision{Allow: false}
+		return exec.SendDecision{Allow: false, Reason: "partitioned"}
 	}
 
 	if e.ShouldDrop() {
-		return exec.SendDecision{Allow: false}
+		return exec.SendDecision{Allow: false, Reason: "dropped"}
 	}
 
-	return exec.SendDecision{Allow: true, Delay: e.GetDelay()}
+	return exec.SendDecision{Allow: true, Delay: e.GetDelay(), Reason: "allowed"}
 }
 
-// BeforeProbe determines if a probe to the given peer should succeed based on current fault parameters.
-func (e *Engine) BeforeProbe(peer string) bool {
+// BeforeProbe determines if probe traffic to a peer should proceed.
+func (e *Engine) BeforeProbe(peer string) exec.ProbeDecision {
 	if e == nil {
-		return true
+		return exec.ProbeDecision{Allow: true, Reason: "no-fault-engine"}
 	}
 
 	if e.IsCrashed() {
-		return false
+		return exec.ProbeDecision{Allow: false, Reason: "crashed"}
 	}
 
 	if e.IsPartitioned(peer) {
-		return false
+		return exec.ProbeDecision{Allow: false, Reason: "partitioned"}
 	}
 
-	return true
+	return exec.ProbeDecision{Allow: true, Delay: e.GetDelay(), Reason: "allowed"}
 }
 
-
-// this is to control the tick event, if the node is crashed, we skip
-func (e *Engine) BeforeTick() bool {
+// BeforeTick determines whether protocol/controlplane loops may progress.
+func (e *Engine) BeforeTick() exec.TickDecision {
 	if e == nil {
-		return true
+		return exec.TickDecision{Allow: true, Reason: "no-fault-engine"}
 	}
 
-	return !e.IsCrashed()
+	if e.IsCrashed() {
+		return exec.TickDecision{Allow: false, Reason: "crashed"}
+	}
+
+	return exec.TickDecision{Allow: true, Delay: e.GetDelay(), Reason: "allowed"}
 }
