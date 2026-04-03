@@ -2,6 +2,8 @@ package manager
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/vky5/faultlab/internal/cluster"
 )
 
@@ -9,6 +11,17 @@ import (
 func (m *Manager) CreateCluster(clusterID string, protocol string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	protocol = strings.ToLower(strings.TrimSpace(protocol))
+	if protocol == "" {
+		protocol = "gossip"
+	}
+
+	switch protocol {
+	case "gossip", "raft":
+	default:
+		return fmt.Errorf("unsupported protocol %q (supported: gossip, raft)", protocol)
+	}
 
 	if _, exists := m.clusters[clusterID]; exists {
 		return fmt.Errorf("cluster already exists")
@@ -31,7 +44,7 @@ func (m *Manager) RemoveCluster(clusterID string) error {
 		return fmt.Errorf("cluster does not exist")
 	}
 
-	if nodes, err:= m.GetNodes(clusterID); err == nil {
+	if nodes, err := m.GetNodes(clusterID); err == nil {
 		for _, node := range nodes {
 			m.RemoveNode(clusterID, node.ID)
 		}

@@ -24,7 +24,7 @@ type PeerInfo struct {
 }
 
 type CPSession interface {
-	Establish(ctx context.Context) error
+	Establish(ctx context.Context) (string, error)
 	Heartbeat(ctx context.Context) error
 	FetchPeers(ctx context.Context) ([]*protocol.NodeInfo, error)
 	ReportLog(ctx context.Context, level, msg string) error
@@ -34,6 +34,6 @@ type CPSession interface {
 type NodeSession interface {
 	OnPeersUpdated(peers []PeerInfo)
 	Start(ctx context.Context)                          // start internal loops
-	GetTransportHealth(id string) TransportHealth                 // runtime reads state
+	GetTransportHealth(id string) TransportHealth       // runtime reads state
 	Send(ctx context.Context, env proto.Envelope) error // sending message
 }

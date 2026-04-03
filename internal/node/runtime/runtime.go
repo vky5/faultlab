@@ -66,16 +66,32 @@ func (r *Runtime) Start(fe *fault.Engine) {
 	r.server = node.NewServer(r)              // implementing gRPC serverrs
 	r.eventCh = make(chan RuntimeEvent, 1024) // implementing channel to recieve events // TODO check for the backpressure
 
-	r.logger.Printf("Loading baseline protocol...")
-	p, err := proto.Load("gossip")
+	// initializing fault injection engine
+	r.fault = fe
+
+	go r.runGRPCServer(r.ctx) // Start gRPC server first so controlplane verification ping can succeed
+
+	time.Sleep(500 * time.Millisecond) // Wait briefly for gRPC server to start listening before registering
+
+	assignedProtocol, err := r.registerNodeWithControlPlane(r.ctx)
 	if err != nil {
-		log.Fatalf("protocol load failed: %v", err)
+		log.Fatalf("registration failed: %v", err)
+	}
+
+	r.logger.Printf("Loading protocol assigned by controlplane: %s", assignedProtocol)
+	p, err := proto.Load(assignedProtocol)
+	if err != nil {
+		log.Fatalf("protocol load failed for %s: %v", assignedProtocol, err)
 	}
 	r.proto = p
 	r.logger.Printf("Protocol loaded successfully: %T", p)
 
-	// initializing fault injection engine
-	r.fault = fe
+	capabilities := CheckCapabilities(r.proto)
+	fmt.Printf("the capabilities are : %+v\n", capabilities)
+
+	if err := r.getPeersFromControlplane(r.ctx); err != nil {
+		r.logger.Printf("initial peer sync failed: %v", err)
+	}
 
 	driver := NewProtocolDriver(
 		1*time.Second, // time duration for each tick()
@@ -121,10 +137,7 @@ func (r *Runtime) Start(fe *fault.Engine) {
 
 	go r.driver.Run(r.ctx, p)
 	go r.runProtocolLoop()
-	go r.ns.Start(r.ctx)      // Start node session's internal probe loop (sends actual pings, updates health state)
-	go r.runGRPCServer(r.ctx) // Start gRPC server FIRST and wait for it to be ready
-
-	time.Sleep(500 * time.Millisecond) // Wait briefly for gRPC server to start listening before registering
+	go r.ns.Start(r.ctx) // Start node session's internal probe loop (sends actual pings, updates health state)
 
 	go r.controlPlaneSyncLoop(r.ctx)
 

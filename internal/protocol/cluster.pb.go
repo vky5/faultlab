@@ -70,6 +70,55 @@ func (RegisterStatus) EnumDescriptor() ([]byte, []int) {
 	return file_internal_protocol_cluster_proto_rawDescGZIP(), []int{0}
 }
 
+type SupportedProtocol int32
+
+const (
+	SupportedProtocol_SUPPORTED_PROTOCOL_UNSPECIFIED SupportedProtocol = 0
+	SupportedProtocol_SUPPORTED_PROTOCOL_GOSSIP      SupportedProtocol = 1
+	SupportedProtocol_SUPPORTED_PROTOCOL_RAFT        SupportedProtocol = 2
+)
+
+// Enum value maps for SupportedProtocol.
+var (
+	SupportedProtocol_name = map[int32]string{
+		0: "SUPPORTED_PROTOCOL_UNSPECIFIED",
+		1: "SUPPORTED_PROTOCOL_GOSSIP",
+		2: "SUPPORTED_PROTOCOL_RAFT",
+	}
+	SupportedProtocol_value = map[string]int32{
+		"SUPPORTED_PROTOCOL_UNSPECIFIED": 0,
+		"SUPPORTED_PROTOCOL_GOSSIP":      1,
+		"SUPPORTED_PROTOCOL_RAFT":        2,
+	}
+)
+
+func (x SupportedProtocol) Enum() *SupportedProtocol {
+	p := new(SupportedProtocol)
+	*p = x
+	return p
+}
+
+func (x SupportedProtocol) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SupportedProtocol) Descriptor() protoreflect.EnumDescriptor {
+	return file_internal_protocol_cluster_proto_enumTypes[1].Descriptor()
+}
+
+func (SupportedProtocol) Type() protoreflect.EnumType {
+	return &file_internal_protocol_cluster_proto_enumTypes[1]
+}
+
+func (x SupportedProtocol) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SupportedProtocol.Descriptor instead.
+func (SupportedProtocol) EnumDescriptor() ([]byte, []int) {
+	return file_internal_protocol_cluster_proto_rawDescGZIP(), []int{1}
+}
+
 type RegisterNodeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ClusterId     string                 `protobuf:"bytes,1,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
@@ -142,6 +191,7 @@ type RegisterNodeResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Status        RegisterStatus         `protobuf:"varint,1,opt,name=status,proto3,enum=cluster.RegisterStatus" json:"status,omitempty"`
 	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	Protocol      SupportedProtocol      `protobuf:"varint,3,opt,name=protocol,proto3,enum=cluster.SupportedProtocol" json:"protocol,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -188,6 +238,13 @@ func (x *RegisterNodeResponse) GetMessage() string {
 		return x.Message
 	}
 	return ""
+}
+
+func (x *RegisterNodeResponse) GetProtocol() SupportedProtocol {
+	if x != nil {
+		return x.Protocol
+	}
+	return SupportedProtocol_SUPPORTED_PROTOCOL_UNSPECIFIED
 }
 
 type HeartbeatRequest struct {
@@ -564,10 +621,11 @@ const file_internal_protocol_cluster_proto_rawDesc = "" +
 	"cluster_id\x18\x01 \x01(\tR\tclusterId\x12\x17\n" +
 	"\anode_id\x18\x02 \x01(\tR\x06nodeId\x12\x18\n" +
 	"\aaddress\x18\x03 \x01(\tR\aaddress\x12\x12\n" +
-	"\x04port\x18\x04 \x01(\x05R\x04port\"a\n" +
+	"\x04port\x18\x04 \x01(\x05R\x04port\"\x99\x01\n" +
 	"\x14RegisterNodeResponse\x12/\n" +
 	"\x06status\x18\x01 \x01(\x0e2\x17.cluster.RegisterStatusR\x06status\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"A\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x126\n" +
+	"\bprotocol\x18\x03 \x01(\x0e2\x1a.cluster.SupportedProtocolR\bprotocol\"A\n" +
 	"\x10HeartbeatRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -597,7 +655,11 @@ const file_internal_protocol_cluster_proto_rawDesc = "" +
 	"\aUNKNOWN\x10\x00\x12\v\n" +
 	"\aSUCCESS\x10\x01\x12\n" +
 	"\n" +
-	"\x06FAILED\x10\x022\x99\x02\n" +
+	"\x06FAILED\x10\x02*s\n" +
+	"\x11SupportedProtocol\x12\"\n" +
+	"\x1eSUPPORTED_PROTOCOL_UNSPECIFIED\x10\x00\x12\x1d\n" +
+	"\x19SUPPORTED_PROTOCOL_GOSSIP\x10\x01\x12\x1b\n" +
+	"\x17SUPPORTED_PROTOCOL_RAFT\x10\x022\x99\x02\n" +
 	"\x13OrchestratorService\x12K\n" +
 	"\fRegisterNode\x12\x1c.cluster.RegisterNodeRequest\x1a\x1d.cluster.RegisterNodeResponse\x12B\n" +
 	"\tHeartbeat\x12\x19.cluster.HeartbeatRequest\x1a\x1a.cluster.HeartbeatResponse\x129\n" +
@@ -616,36 +678,38 @@ func file_internal_protocol_cluster_proto_rawDescGZIP() []byte {
 	return file_internal_protocol_cluster_proto_rawDescData
 }
 
-var file_internal_protocol_cluster_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_internal_protocol_cluster_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_internal_protocol_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_internal_protocol_cluster_proto_goTypes = []any{
 	(RegisterStatus)(0),          // 0: cluster.RegisterStatus
-	(*RegisterNodeRequest)(nil),  // 1: cluster.RegisterNodeRequest
-	(*RegisterNodeResponse)(nil), // 2: cluster.RegisterNodeResponse
-	(*HeartbeatRequest)(nil),     // 3: cluster.HeartbeatRequest
-	(*HeartbeatResponse)(nil),    // 4: cluster.HeartbeatResponse
-	(*PeersRequest)(nil),         // 5: cluster.PeersRequest
-	(*PeersResponse)(nil),        // 6: cluster.PeersResponse
-	(*NodeInfo)(nil),             // 7: cluster.NodeInfo
-	(*LogRequest)(nil),           // 8: cluster.LogRequest
-	(*LogResponse)(nil),          // 9: cluster.LogResponse
+	(SupportedProtocol)(0),       // 1: cluster.SupportedProtocol
+	(*RegisterNodeRequest)(nil),  // 2: cluster.RegisterNodeRequest
+	(*RegisterNodeResponse)(nil), // 3: cluster.RegisterNodeResponse
+	(*HeartbeatRequest)(nil),     // 4: cluster.HeartbeatRequest
+	(*HeartbeatResponse)(nil),    // 5: cluster.HeartbeatResponse
+	(*PeersRequest)(nil),         // 6: cluster.PeersRequest
+	(*PeersResponse)(nil),        // 7: cluster.PeersResponse
+	(*NodeInfo)(nil),             // 8: cluster.NodeInfo
+	(*LogRequest)(nil),           // 9: cluster.LogRequest
+	(*LogResponse)(nil),          // 10: cluster.LogResponse
 }
 var file_internal_protocol_cluster_proto_depIdxs = []int32{
-	0, // 0: cluster.RegisterNodeResponse.status:type_name -> cluster.RegisterStatus
-	7, // 1: cluster.PeersResponse.peers:type_name -> cluster.NodeInfo
-	1, // 2: cluster.OrchestratorService.RegisterNode:input_type -> cluster.RegisterNodeRequest
-	3, // 3: cluster.OrchestratorService.Heartbeat:input_type -> cluster.HeartbeatRequest
-	5, // 4: cluster.OrchestratorService.GetPeers:input_type -> cluster.PeersRequest
-	8, // 5: cluster.OrchestratorService.ReportLog:input_type -> cluster.LogRequest
-	2, // 6: cluster.OrchestratorService.RegisterNode:output_type -> cluster.RegisterNodeResponse
-	4, // 7: cluster.OrchestratorService.Heartbeat:output_type -> cluster.HeartbeatResponse
-	6, // 8: cluster.OrchestratorService.GetPeers:output_type -> cluster.PeersResponse
-	9, // 9: cluster.OrchestratorService.ReportLog:output_type -> cluster.LogResponse
-	6, // [6:10] is the sub-list for method output_type
-	2, // [2:6] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	0,  // 0: cluster.RegisterNodeResponse.status:type_name -> cluster.RegisterStatus
+	1,  // 1: cluster.RegisterNodeResponse.protocol:type_name -> cluster.SupportedProtocol
+	8,  // 2: cluster.PeersResponse.peers:type_name -> cluster.NodeInfo
+	2,  // 3: cluster.OrchestratorService.RegisterNode:input_type -> cluster.RegisterNodeRequest
+	4,  // 4: cluster.OrchestratorService.Heartbeat:input_type -> cluster.HeartbeatRequest
+	6,  // 5: cluster.OrchestratorService.GetPeers:input_type -> cluster.PeersRequest
+	9,  // 6: cluster.OrchestratorService.ReportLog:input_type -> cluster.LogRequest
+	3,  // 7: cluster.OrchestratorService.RegisterNode:output_type -> cluster.RegisterNodeResponse
+	5,  // 8: cluster.OrchestratorService.Heartbeat:output_type -> cluster.HeartbeatResponse
+	7,  // 9: cluster.OrchestratorService.GetPeers:output_type -> cluster.PeersResponse
+	10, // 10: cluster.OrchestratorService.ReportLog:output_type -> cluster.LogResponse
+	7,  // [7:11] is the sub-list for method output_type
+	3,  // [3:7] is the sub-list for method input_type
+	3,  // [3:3] is the sub-list for extension type_name
+	3,  // [3:3] is the sub-list for extension extendee
+	0,  // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_internal_protocol_cluster_proto_init() }
@@ -658,7 +722,7 @@ func file_internal_protocol_cluster_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_protocol_cluster_proto_rawDesc), len(file_internal_protocol_cluster_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      2,
 			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,

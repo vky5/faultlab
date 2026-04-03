@@ -22,6 +22,7 @@ message RegisterNodeRequest {
 message RegisterNodeResponse {
   RegisterStatus status = 1;
   string message = 2;
+  SupportedProtocol protocol = 3;
 }
 
 
@@ -29,6 +30,12 @@ enum RegisterStatus {
   UNKNOWN = 0;
   SUCCESS = 1;
   FAILED = 2;
+}
+
+enum SupportedProtocol {
+  SUPPORTED_PROTOCOL_UNSPECIFIED = 0;
+  SUPPORTED_PROTOCOL_GOSSIP = 1;
+  SUPPORTED_PROTOCOL_RAFT = 2;
 }
 
 message HeartbeatRequest {

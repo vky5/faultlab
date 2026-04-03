@@ -79,9 +79,9 @@ func (s *cpsession) invalidateConn() {
 	}
 }
 
-func (s *cpsession) Establish(ctx context.Context) error {
+func (s *cpsession) Establish(ctx context.Context) (string, error) {
 	if err := s.connect(ctx); err != nil {
-		return err
+		return "", err
 	}
 
 	opCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
@@ -96,14 +96,30 @@ func (s *cpsession) Establish(ctx context.Context) error {
 
 	if err != nil {
 		s.invalidateConn() // mark connection unhealthy
-		return err
+		return "", err
 	}
 
 	if resp.Status != protocol.RegisterStatus_SUCCESS {
-		return fmt.Errorf("registration rejected: %s", resp.Message)
+		return "", fmt.Errorf("registration rejected: %s", resp.Message)
 	}
 
-	return nil
+	assigned, err := mapAssignedProtocol(resp.GetProtocol())
+	if err != nil {
+		return "", err
+	}
+
+	return assigned, nil
+}
+
+func mapAssignedProtocol(p protocol.SupportedProtocol) (string, error) {
+	switch p {
+	case protocol.SupportedProtocol_SUPPORTED_PROTOCOL_GOSSIP:
+		return "gossip", nil
+	case protocol.SupportedProtocol_SUPPORTED_PROTOCOL_RAFT:
+		return "raft", nil
+	default:
+		return "", fmt.Errorf("unsupported or unspecified assigned protocol: %s", p.String())
+	}
 }
 
 // Heartbeat sends a heartbeat to the control plane
@@ -167,7 +183,7 @@ func (s *cpsession) ReportLog(ctx context.Context, level, msg string) error {
 		Level:     level,
 		Message:   msg,
 	})
-	
+
 	if err != nil {
 		// we don't invalidate connection violently for dropped logs
 		return err

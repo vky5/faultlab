@@ -15,8 +15,9 @@ func (m *Manager) RegisterNode(clusterID, nodeID, address string, port int) []cl
 	clusterState, ok := m.clusters[clusterID]
 	if !ok {
 		clusterState = &cluster.Cluster{
-			ID:    clusterID,
-			Nodes: make(map[string]*cluster.Node),
+			ID:       clusterID,
+			Protocol: "gossip",
+			Nodes:    make(map[string]*cluster.Node),
 		}
 		m.clusters[clusterID] = clusterState
 	}

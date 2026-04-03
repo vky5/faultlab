@@ -12,16 +12,6 @@ import (
 // controlPlaneSyncLoop manages periodic sync with controlplane.
 // Lifecycle is controlled by runtime context.
 func (r *Runtime) controlPlaneSyncLoop(ctx context.Context) {
-
-	// first registration (blocking, before loop)
-	if err := r.registerNodeWithControlPlane(ctx); err != nil {
-		r.logger.Printf("registration failed: %v", err)
-	}
-
-	if err := r.getPeersFromControlplane(ctx); err != nil {
-		r.logger.Printf("peer sync failed: %v", err)
-	}
-
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
@@ -45,8 +35,14 @@ func (r *Runtime) runControlplaneSyncCycle(ctx context.Context) {
 }
 
 // registerNodeWithControlPlane performs initial registration.
-func (r *Runtime) registerNodeWithControlPlane(parentCtx context.Context) error {
-	return r.cp.Establish(parentCtx)
+func (r *Runtime) registerNodeWithControlPlane(parentCtx context.Context) (string, error) {
+	assignedProtocol, err := r.cp.Establish(parentCtx)
+	if err != nil {
+		return "", err
+	}
+
+	r.logger.Printf("controlplane assigned protocol: %s", assignedProtocol)
+	return assignedProtocol, nil
 }
 
 // fetchPeersFromControlplane only fetches topology from controlplane.

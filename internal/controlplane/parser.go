@@ -21,12 +21,31 @@ func Parse(input string) (Command, error) {
 
 	case "new-cluster":
 		if len(parts) < 2 {
-			return Command{}, fmt.Errorf("usage: new-cluster <cluster-id> [protocol]")
+			return Command{}, fmt.Errorf("usage: new-cluster <cluster-id> [--protocol <gossip|raft>]")
 		}
+
 		protocol := "gossip"
-		if len(parts) >= 3 {
-			protocol = parts[2]
+		for i := 2; i < len(parts); i++ {
+			arg := parts[i]
+
+			if arg == "--protocol" || arg == "-protocol" || arg == "-p" {
+				if i+1 >= len(parts) {
+					return Command{}, fmt.Errorf("usage: new-cluster <cluster-id> [--protocol <gossip|raft>]")
+				}
+				protocol = parts[i+1]
+				i++
+				continue
+			}
+
+			// Backward compatibility with old positional syntax: new-cluster <id> <protocol>
+			if i == 2 && !strings.HasPrefix(arg, "-") {
+				protocol = arg
+				continue
+			}
+
+			return Command{}, fmt.Errorf("unknown option for new-cluster: %s", arg)
 		}
+
 		cmd := NewCommand(CmdCreateCluster)
 		cmd.ClusterID = parts[1]
 		cmd.Protocol = protocol

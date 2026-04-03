@@ -272,7 +272,7 @@ func (a *Actor) Run() {
 
 			case CmdHelp:
 				help := []string{
-					"new-cluster <cluster-id> [protocol]",
+					"new-cluster <cluster-id> [--protocol <gossip|raft>] (default: gossip)",
 					"add-node <cluster-id> <node-id> <host> <port>",
 					"remove-node <cluster-id> <node-id>",
 					"list-nodes <cluster-id>",

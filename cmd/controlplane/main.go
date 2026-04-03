@@ -93,7 +93,7 @@ func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Println("control plane ready for commands")
 	fmt.Println("Commands:")
-	fmt.Println("  new-cluster <cluster-id> [protocol]")
+	fmt.Println("  new-cluster <cluster-id> [--protocol <gossip|raft>] (default: gossip)")
 	fmt.Println("  add-node <cluster-id> <node-id> <host> <port>")
 	fmt.Println("  remove-node <cluster-id> <node-id>")
 	fmt.Println("  list-nodes <cluster-id>")

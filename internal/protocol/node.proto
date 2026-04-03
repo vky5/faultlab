@@ -13,6 +13,8 @@ service NodeService {
 
   // RPCs for fault injection and action execution for controlplane
   rpc SetFaultParams(FaultRequest) returns (FaultResponse);
+
+  // generic RPC to set KV data or any other state of the protocl
   rpc ExecuteAction (ActionRequest) returns (ActionResponse);
 }
 

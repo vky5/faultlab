@@ -111,6 +111,19 @@ func (s *Service) GetPeers(clusterID string) ([]cluster.Node, error) {
 	return s.cluster.GetNodes(clusterID)
 }
 
+func (s *Service) GetClusterProtocol(clusterID string) (string, error) {
+	c, err := s.cluster.GetCluster(clusterID)
+	if err != nil {
+		return "", err
+	}
+
+	if c.Protocol == "" {
+		return "gossip", nil
+	}
+
+	return c.Protocol, nil
+}
+
 func (s *Service) Heartbeat(clusterID, nodeID string) error {
 	return s.cluster.Heartbeat(clusterID, nodeID)
 }
@@ -145,7 +158,7 @@ func (s *Service) ExecuteKVPut(ctx context.Context, clusterID, nodeID, key, valu
 
 	// Visualize KV Update signaling
 	// payload size is apprx len(key) + len(value) + json overhead
-	size := len(key) + len(value) + 64 
+	size := len(key) + len(value) + 64
 	s.BroadcastLog(&protocol.LogRequest{
 		ClusterId: clusterID,
 		NodeId:    "CP",
