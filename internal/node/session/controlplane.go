@@ -103,23 +103,17 @@ func (s *cpsession) Establish(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("registration rejected: %s", resp.Message)
 	}
 
-	assigned, err := mapAssignedProtocol(resp.GetProtocol())
-	if err != nil {
-		return "", err
+	assigned := resp.GetAssignedProtocol()
+	if assigned == nil {
+		return "", fmt.Errorf("registration response missing assigned protocol")
 	}
 
-	return assigned, nil
-}
-
-func mapAssignedProtocol(p protocol.SupportedProtocol) (string, error) {
-	switch p {
-	case protocol.SupportedProtocol_SUPPORTED_PROTOCOL_GOSSIP:
-		return "gossip", nil
-	case protocol.SupportedProtocol_SUPPORTED_PROTOCOL_RAFT:
-		return "raft", nil
-	default:
-		return "", fmt.Errorf("unsupported or unspecified assigned protocol: %s", p.String())
+	key := assigned.GetKey()
+	if key == "" {
+		return "", fmt.Errorf("registration response missing assigned protocol key")
 	}
+
+	return key, nil
 }
 
 // Heartbeat sends a heartbeat to the control plane

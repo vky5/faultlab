@@ -11,6 +11,7 @@ const (
 	EventTick    RuntimeEventType = iota // Internal timer
 	EventMessage                         // Network message received
 	EventAction                          // Action from the control plane
+	EventProtocolSwap                     // Protocol swap request
 )
 
 /*
@@ -29,6 +30,10 @@ type RuntimeEvent struct {
 	// for control plane actions
 	Act  *protocol.ActionRequest
 	Resp chan *protocol.ActionResponse
+
+	// for protocol swap requests
+	ProtocolKey string
+	SwapErr     chan error
 }
 
 /*

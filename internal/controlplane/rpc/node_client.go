@@ -61,7 +61,7 @@ func (n *NodeClient) Ping(ctx context.Context, host string, port int) error {
 	defer conn.Close()
 
 	rpcCtx, cancel := context.WithTimeout(ctx, n.timeout)
-	defer cancel()
+defer cancel()
 
 	client := protocol.NewNodeServiceClient(conn)
 

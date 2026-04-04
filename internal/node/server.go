@@ -1,3 +1,5 @@
+// handlers for the gRPC that node exposes
+
 package node
 
 import (
@@ -15,6 +17,7 @@ type noderuntime interface { // this is what runtime implements  check runtime.g
 	HandleEnvelope(env *protocol.EnvelopeRequest)
 	ExecuteAction(ctx context.Context, req *protocol.ActionRequest) (*protocol.ActionResponse, error)
 	SetFaultParams(params *protocol.FaultRequest) error
+	ProtocolSwap(ctx context.Context, proto string) error
 	exec.FaultDecider
 }
 
@@ -141,4 +144,48 @@ func (n *NodeRPCServer) ExecuteAction(
 	}
 
 	return resp, nil
+}
+
+// handling protocol change
+func (n *NodeRPCServer) ChangeProtocol(ctx context.Context, req *protocol.ChangeProtocolRequest) (*protocol.ChangeProtocolResponse, error) {
+	if d := n.nc.BeforeTick(); !d.Allow {
+		return nil, status.Error(codes.Unavailable, "node is crashed")
+	}
+
+	if req == nil {
+		return &protocol.ChangeProtocolResponse{
+			Done:    false,
+			Message: "nil change protocol request",
+		}, nil
+	}
+
+	assigned := req.GetAssignedProtocol()
+	if assigned == nil {
+		return &protocol.ChangeProtocolResponse{
+			Done:    false,
+			Message: "assigned_protocol is required",
+		}, nil
+	}
+
+	key := assigned.GetKey()
+	if key == "" {
+		return &protocol.ChangeProtocolResponse{
+			Done:    false,
+			Message: "assigned_protocol.key is required",
+		}, nil
+	}
+
+	if err := n.nc.ProtocolSwap(ctx, key); err != nil {
+		return &protocol.ChangeProtocolResponse{
+			Done:           false,
+			ActiveProtocol: assigned,
+			Message:        err.Error(),
+		}, nil
+	}
+
+	return &protocol.ChangeProtocolResponse{
+		Done:           true,
+		ActiveProtocol: assigned,
+		Message:        "protocol change acknowledged",
+	}, nil
 }

@@ -73,25 +73,24 @@ func (r *Runtime) Start(fe *fault.Engine) {
 
 	time.Sleep(500 * time.Millisecond) // Wait briefly for gRPC server to start listening before registering
 
+	go r.runProtocolLoop()
+
 	assignedProtocol, err := r.registerNodeWithControlPlane(r.ctx)
 	if err != nil {
 		log.Fatalf("registration failed: %v", err)
 	}
 
-	r.logger.Printf("Loading protocol assigned by controlplane: %s", assignedProtocol)
-	p, err := proto.Load(assignedProtocol)
-	if err != nil {
-		log.Fatalf("protocol load failed for %s: %v", assignedProtocol, err)
-	}
-	r.proto = p
-	r.logger.Printf("Protocol loaded successfully: %T", p)
-
-	capabilities := CheckCapabilities(r.proto)
-	fmt.Printf("the capabilities are : %+v\n", capabilities)
-
 	if err := r.getPeersFromControlplane(r.ctx); err != nil {
 		r.logger.Printf("initial peer sync failed: %v", err)
 	}
+
+	r.logger.Printf("Loading protocol assigned by controlplane via swap path: %s", assignedProtocol)
+	if err := r.ProtocolSwap(r.ctx, assignedProtocol); err != nil {
+		log.Fatalf("protocol initialization failed for %s: %v", assignedProtocol, err)
+	}
+
+	capabilities := CheckCapabilities(r.proto)
+	fmt.Printf("the capabilities are : %+v\n", capabilities)
 
 	driver := NewProtocolDriver(
 		1*time.Second, // time duration for each tick()
@@ -104,29 +103,6 @@ func (r *Runtime) Start(fe *fault.Engine) {
 
 	r.driver = driver
 
-	// Initialize protocol with initial peer list
-	peerIDs := make([]string, 0, len(r.config.Peers))
-	for _, p := range r.config.Peers {
-		peerIDs = append(peerIDs, p.ID)
-	}
-	if peerAwareProtocol, ok := p.(interface{ SetPeers([]string) }); ok { // It is simply asking does the peer whose type we don't know fully impements the method SetPeers that takes list of string as input
-		peerAwareProtocol.SetPeers(peerIDs)
-		r.logger.Printf("Initial peers set for protocol: %v", peerIDs)
-	}
-
-	if pWithDiscovery, ok := p.(proto.ClusterProtocolWithDiscovery); ok {
-		pWithDiscovery.SetPeerDiscoveryCallback(r)
-		r.logger.Printf("Registered peer discovery callback")
-	}
-
-	if pWithLogging, ok := p.(proto.ClusterProtocolWithLogging); ok {
-		pWithLogging.SetLogger(r.logger)
-		r.logger.Printf("Registered remote logger for protocol")
-	}
-
-	if err := r.proto.Start(r.config.ID); err != nil {
-		log.Fatalf("failed to initialize the initial state of the protocol")
-	}
 	r.logger.Printf("Protocol started for node %s", r.config.ID)
 
 	// PutAction(r.proto, "b", "node2_value")
@@ -135,8 +111,7 @@ func (r *Runtime) Start(fe *fault.Engine) {
 	// PutAction(r.proto, "e", "node5_value")
 	// PutAction(r.proto, "a", "node1_value")
 
-	go r.driver.Run(r.ctx, p)
-	go r.runProtocolLoop()
+	go r.driver.Run(r.ctx, r.proto)
 	go r.ns.Start(r.ctx) // Start node session's internal probe loop (sends actual pings, updates health state)
 
 	go r.controlPlaneSyncLoop(r.ctx)

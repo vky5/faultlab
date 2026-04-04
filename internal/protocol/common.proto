@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package protocol;
+
+option go_package = "faultlab/internal/protocol";
+
+// ProtocolAssignment is the shared wire contract for protocol selection and
+// protocol changes across controlplane and node runtime.
+message ProtocolAssignment {
+  string key = 1;   // e.g. gossip, raft
+  uint64 epoch = 2; // monotonic cluster protocol version
+}

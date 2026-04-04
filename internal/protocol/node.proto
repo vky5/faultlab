@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package protocol;
 
+import "internal/protocol/common.proto";
+
 option go_package = "faultlab/internal/protocol";
 
 service NodeService {
@@ -16,12 +18,27 @@ service NodeService {
 
   // generic RPC to set KV data or any other state of the protocl
   rpc ExecuteAction (ActionRequest) returns (ActionResponse);
+
+  // Change the protocol by the controlplane
+  rpc ChangeProtocol(ChangeProtocolRequest) returns (ChangeProtocolResponse);
+}
+
+message ChangeProtocolRequest {
+  string cluster_id = 1;
+  string node_id = 2;
+  ProtocolAssignment assigned_protocol = 3;
+}
+
+message ChangeProtocolResponse {
+  bool done = 1;
+  ProtocolAssignment active_protocol = 2;
+  string message = 3;
 }
 
 message ActionRequest {
-  string node_id = 1;
+  string     node_id = 1;
   ActionType action  = 2; // "kv.put", "kv.get"
-  bytes  payload = 3;
+  bytes      payload = 3;
 }
 
 message ActionResponse {
@@ -39,13 +56,13 @@ enum ActionType {
 
 // structure of payload for kv.put and kv.get
 message KVPutRequest {
-  string key = 1;
+  string key   = 1;
   string value = 2;
 }
 
 message KVGetRequest {
   string key = 1;
-} 
+}
 
 message KVGetResponse {
   string value = 1;

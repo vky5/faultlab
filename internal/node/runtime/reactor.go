@@ -34,6 +34,15 @@ func (r *Runtime) runProtocolLoop() {
 
 			case EventAction:
 				r.handleActionEvent(ev)
+
+			case EventProtocolSwap:
+				err := r.applyProtocolSwap(ev.ProtocolKey)
+				if err != nil {
+					r.logger.Printf("protocol swap failed: %v", err)
+				}
+				if ev.SwapErr != nil {
+					ev.SwapErr <- err
+				}
 			}
 
 		}

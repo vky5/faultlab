@@ -3,7 +3,6 @@ package rpc
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	controlplanesvc "github.com/vky5/faultlab/internal/controlplane/service"
 	pb "github.com/vky5/faultlab/internal/protocol"
@@ -51,21 +50,13 @@ func (s *Server) RegisterNode(
 	}
 
 	return &pb.RegisterNodeResponse{
-		Status:   pb.RegisterStatus_SUCCESS,
-		Message:  "node registered",
-		Protocol: mapSupportedProtocol(protocolName), // the protocl is assigned at the time of creating a cluster
+		Status:  pb.RegisterStatus_SUCCESS,
+		Message: "node registered",
+		AssignedProtocol: &pb.ProtocolAssignment{
+			Key:   protocolName,
+			Epoch: 0,
+		},
 	}, nil
-}
-
-func mapSupportedProtocol(name string) pb.SupportedProtocol {
-	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "gossip":
-		return pb.SupportedProtocol_SUPPORTED_PROTOCOL_GOSSIP
-	case "raft":
-		return pb.SupportedProtocol_SUPPORTED_PROTOCOL_RAFT
-	default:
-		return pb.SupportedProtocol_SUPPORTED_PROTOCOL_UNSPECIFIED
-	}
 }
 
 // getting the peers of a cluster (including node making request)
