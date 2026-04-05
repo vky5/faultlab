@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -122,6 +123,44 @@ func (s *Service) GetClusterProtocol(clusterID string) (string, error) {
 	}
 
 	return c.Protocol, nil
+}
+
+func (s *Service) SetClusterProtocol(ctx context.Context, clusterID, protocolKey string) error {
+	protocolKey = strings.ToLower(strings.TrimSpace(protocolKey))
+	if protocolKey == "" {
+		protocolKey = "gossip"
+	}
+
+	switch protocolKey {
+	case "gossip", "raft":
+	default:
+		return fmt.Errorf("unsupported protocol %q (supported: gossip, raft)", protocolKey)
+	}
+
+	nodes, err := s.cluster.GetNodes(clusterID)
+	if err != nil {
+		return err
+	}
+
+	for _, n := range nodes {
+		if err := s.NodeClient.SwapProtocol(ctx, n.Address, n.Port, clusterID, n.ID, protocolKey, 0); err != nil {
+			return fmt.Errorf("protocol swap failed for node %s: %w", n.ID, err)
+		}
+	}
+
+	if err := s.cluster.SwapProtocol(clusterID, protocolKey); err != nil {
+		return err
+	}
+
+	s.BroadcastLog(&protocol.LogRequest{
+		ClusterId: clusterID,
+		NodeId:    "CP",
+		Level:     "INFO",
+		Message:   fmt.Sprintf("TRACE:SEND:CP:%s:CP_PROTOCOL_SWAP:%s", clusterID, protocolKey),
+		Timestamp: time.Now().Unix(),
+	})
+
+	return nil
 }
 
 func (s *Service) Heartbeat(clusterID, nodeID string) error {

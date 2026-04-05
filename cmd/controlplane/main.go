@@ -98,6 +98,7 @@ func main() {
 	fmt.Println("  remove-node <cluster-id> <node-id>")
 	fmt.Println("  list-nodes <cluster-id>")
 	fmt.Println("  list-clusters")
+	fmt.Println("  set-protocol <cluster-id> <gossip|raft>")
 	fmt.Println("  kv-put <cluster-id> <node-id> <key> <value>")
 	fmt.Println("  kv-get <cluster-id> <node-id> <key>")
 	fmt.Println("  set-fault <cluster-id> <node-id> <crashed:true|false> <drop-rate:0..1> <delay-ms:int> [partition-csv]")

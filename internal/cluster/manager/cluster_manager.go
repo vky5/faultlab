@@ -77,3 +77,27 @@ func (m *Manager) GetCluster(clusterID string) (*cluster.Cluster, error) {
 	}
 	return c, nil
 }
+
+// Swap Protocol of Cluster
+func (m *Manager) SwapProtocol(clusterID, protocol string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	
+	protocol = strings.ToLower(strings.TrimSpace(protocol))
+	if protocol == "" {
+		protocol = "gossip"
+	}
+	
+	switch protocol {
+	case "gossip", "raft":
+	default:
+		return fmt.Errorf("unsupported protocol %q (supported: gossip, raft)", protocol)
+	}
+
+	c, ok := m.clusters[clusterID]
+	if !ok {
+		return fmt.Errorf("cluster not found")
+	}
+	c.Protocol = protocol
+	return nil
+}

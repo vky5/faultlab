@@ -128,6 +128,10 @@ func (m *mockNodeClient) ExecuteAction(ctx context.Context, host string, port in
 	return &pb.ActionResponse{Success: true}, nil
 }
 
+func (m *mockNodeClient) SwapProtocol(ctx context.Context, host string, port int, clusterID, nodeID, protocolKey string, epoch uint64) error {
+	return nil
+}
+
 type mockNodeServer struct {
 	pb.UnimplementedNodeServiceServer
 }

@@ -86,3 +86,36 @@ func (n *NodeClient) ExecuteAction(ctx context.Context, host string, port int, r
 
 	return client.ExecuteAction(rpcCtx, req)
 }
+
+func (n *NodeClient) SwapProtocol(ctx context.Context, host string, port int, clusterID, nodeID, protocolKey string, epoch uint64) error {
+	addr := fmt.Sprintf("%s:%d", host, port)
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	rpcCtx, cancel := context.WithTimeout(ctx, n.timeout)
+	defer cancel()
+
+	client := protocol.NewNodeServiceClient(conn)
+
+	resp, err := client.ChangeProtocol(rpcCtx, &protocol.ChangeProtocolRequest{
+		ClusterId: clusterID,
+		NodeId:    nodeID,
+		AssignedProtocol: &protocol.ProtocolAssignment{
+			Key:   protocolKey,
+			Epoch: epoch,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("ChangeProtocol RPC failed: %w", err)
+	}
+
+	if !resp.GetDone() {
+		return fmt.Errorf("ChangeProtocol rejected: %s", resp.GetMessage())
+	}
+
+	return nil
+}

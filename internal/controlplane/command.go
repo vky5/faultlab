@@ -16,6 +16,7 @@ const (
 	CmdSetPartition
 	CmdKVPut
 	CmdKVGet
+	CmdSetClusterProtocol
 	CmdHelp
 )
 

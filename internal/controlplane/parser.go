@@ -206,6 +206,15 @@ func Parse(input string) (Command, error) {
 		cmd.NodeID = parts[2]
 		cmd.Key = parts[3]
 		return cmd, nil
+
+	case "set-protocol":
+		if len(parts) < 3 {
+			return Command{}, fmt.Errorf("usage: set-protocol <cluster-id> <protocol>")
+		}
+		cmd := NewCommand(CmdSetClusterProtocol)
+		cmd.ClusterID = parts[1]
+		cmd.Protocol = parts[2]
+		return cmd, nil
 	}
 
 	return Command{}, fmt.Errorf("unknown command")

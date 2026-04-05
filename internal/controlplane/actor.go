@@ -270,6 +270,15 @@ func (a *Actor) Run() {
 				}
 				cmd.Reply(map[string]any{"value": value}, nil)
 
+			case CmdSetClusterProtocol:
+				err := a.service.SetClusterProtocol(a.ctx, cmd.ClusterID, cmd.Protocol)
+				if err != nil {
+					log.Println("set-protocol error:", err)
+					cmd.Reply(nil, err)
+					continue
+				}
+				cmd.Reply(map[string]any{"status": "ok"}, nil)
+
 			case CmdHelp:
 				help := []string{
 					"new-cluster <cluster-id> [--protocol <gossip|raft>] (default: gossip)",
@@ -277,6 +286,7 @@ func (a *Actor) Run() {
 					"remove-node <cluster-id> <node-id>",
 					"list-nodes <cluster-id>",
 					"list-clusters",
+					"set-protocol <cluster-id> <gossip|raft>",
 					"kv-put <cluster-id> <node-id> <key> <value>",
 					"kv-get <cluster-id> <node-id> <key>",
 					"set-fault <cluster-id> <node-id> <crashed:true|false> <drop-rate:0..1> <delay-ms:int> [partition-csv]",

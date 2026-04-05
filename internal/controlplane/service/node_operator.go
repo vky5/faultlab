@@ -10,6 +10,7 @@ type NodeOperator interface {
 	StopNode(ctx context.Context, host string, port int) error
 	Ping(ctx context.Context, host string, port int) error
 	ExecuteAction(ctx context.Context, host string, port int, req *protocol.ActionRequest) (*protocol.ActionResponse, error)
+	SwapProtocol(ctx context.Context, host string, port int, clusterID, nodeID, protocolKey string, epoch uint64) error
 }
 
 // we dont want that service depends on the nodeclient directly and want
