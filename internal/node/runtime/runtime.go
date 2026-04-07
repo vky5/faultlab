@@ -89,9 +89,6 @@ func (r *Runtime) Start(fe *fault.Engine) {
 		log.Fatalf("protocol initialization failed for %s: %v", assignedProtocol, err)
 	}
 
-	capabilities := CheckCapabilities(r.proto)
-	fmt.Printf("the capabilities are : %+v\n", capabilities)
-
 	driver := NewProtocolDriver(
 		1*time.Second, // time duration for each tick()
 		r.eventCh,

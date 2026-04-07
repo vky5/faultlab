@@ -142,3 +142,22 @@ func (r *Runtime) sendHeartbeatToControlPlane(parentCtx context.Context) error {
 	// r.logger.Printf("heartbeat sent") // Too noisy to pipe over RPC
 	return nil
 }
+
+// reportCapabilitiesToControlPlane reports the currently active protocol and action contract.
+func (r *Runtime) reportCapabilitiesToControlPlane(parentCtx context.Context, protocolKey string, epoch uint64) error {
+	if protocolKey == "" {
+		return fmt.Errorf("protocol key is required for capability reporting")
+	}
+
+	if r.proto == nil {
+		return fmt.Errorf("cannot report capabilities: protocol is not initialized")
+	}
+
+	capabilities := CheckCapabilities(r.proto)
+	if err := r.cp.ReportNodeCapabilities(parentCtx, protocolKey, epoch, capabilities); err != nil {
+		return err
+	}
+
+	r.logger.Printf("capabilities reported: protocol=%s epoch=%d actions=%+v", protocolKey, epoch, capabilities.Actions)
+	return nil
+}

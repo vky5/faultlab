@@ -184,3 +184,41 @@ func (s *cpsession) ReportLog(ctx context.Context, level, msg string) error {
 	}
 	return nil
 }
+
+func (s *cpsession) ReportNodeCapabilities(
+	ctx context.Context,
+	protocolKey string,
+	epoch uint64,
+	capabilities runtime.ProtocolCapabilities,
+) error {
+	if err := s.connect(ctx); err != nil {
+		return err
+	}
+
+	opCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	resp, err := s.client.ReportNodeCapabilities(opCtx, &protocol.ReportNodeCapabilitiesRequest{
+		ClusterId: s.clusterID,
+		NodeId:    s.nodeID,
+		ActiveProtocol: &protocol.ProtocolAssignment{
+			Key:   protocolKey,
+			Epoch: epoch,
+		},
+		Actions: &protocol.NodeActionCapabilities{
+			KvPut:    capabilities.Actions.KVPut,
+			KvGet:    capabilities.Actions.KVGet,
+			KvDelete: capabilities.Actions.KVDelete,
+		},
+		ReportedAt: time.Now().UnixMilli(),
+	})
+	if err != nil {
+		return err
+	}
+
+	if !resp.GetOk() {
+		return fmt.Errorf("capability report rejected: %s", resp.GetMessage())
+	}
+
+	return nil
+}

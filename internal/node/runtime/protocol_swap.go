@@ -46,6 +46,12 @@ func (n *Runtime) applyProtocolSwap(protocolKey string) error {
 		return fmt.Errorf("failed to start the new protocol: %w", err)
 	}
 
+	// Report capabilities to controlplane after successful swap
+	if err := n.reportCapabilitiesToControlPlane(n.ctx, protocolKey, 0); err != nil {
+		n.logger.Printf("capability reporting failed after swap: %v", err)
+		// Don't fail the swap on reporting error - it's observational
+	}
+
 	return nil
 }
 

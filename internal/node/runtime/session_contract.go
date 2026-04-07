@@ -28,6 +28,7 @@ type CPSession interface {
 	Heartbeat(ctx context.Context) error
 	FetchPeers(ctx context.Context) ([]*protocol.NodeInfo, error)
 	ReportLog(ctx context.Context, level, msg string) error
+	ReportNodeCapabilities(ctx context.Context, protocolKey string, epoch uint64, capabilities ProtocolCapabilities) error
 }
 
 // NodeSession manages peer interactions and connection lifecycle
