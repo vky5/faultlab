@@ -108,3 +108,21 @@ func (s *Server) ReportLog(
 
 	return &pb.LogResponse{Ok: true}, nil
 }
+
+func (s *Server) ReportNodeCapabilities(
+	ctx context.Context,
+	req *pb.ReportNodeCapabilitiesRequest,
+) (*pb.ReportNodeCapabilitiesResponse, error) {
+	err := s.svc.ReportNodeCapabilities(req)
+	if err != nil {
+		return &pb.ReportNodeCapabilitiesResponse{
+			Ok:      false,
+			Message: err.Error(),
+		}, nil
+	}
+
+	return &pb.ReportNodeCapabilitiesResponse{
+		Ok:      true,
+		Message: "capabilities recorded",
+	}, nil
+}

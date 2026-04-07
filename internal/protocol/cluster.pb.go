@@ -562,6 +562,194 @@ func (x *LogResponse) GetOk() bool {
 	return false
 }
 
+type NodeActionCapabilities struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	KvPut         bool                   `protobuf:"varint,1,opt,name=kv_put,json=kvPut,proto3" json:"kv_put,omitempty"`
+	KvGet         bool                   `protobuf:"varint,2,opt,name=kv_get,json=kvGet,proto3" json:"kv_get,omitempty"`
+	KvDelete      bool                   `protobuf:"varint,3,opt,name=kv_delete,json=kvDelete,proto3" json:"kv_delete,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NodeActionCapabilities) Reset() {
+	*x = NodeActionCapabilities{}
+	mi := &file_internal_protocol_cluster_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodeActionCapabilities) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodeActionCapabilities) ProtoMessage() {}
+
+func (x *NodeActionCapabilities) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_protocol_cluster_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodeActionCapabilities.ProtoReflect.Descriptor instead.
+func (*NodeActionCapabilities) Descriptor() ([]byte, []int) {
+	return file_internal_protocol_cluster_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *NodeActionCapabilities) GetKvPut() bool {
+	if x != nil {
+		return x.KvPut
+	}
+	return false
+}
+
+func (x *NodeActionCapabilities) GetKvGet() bool {
+	if x != nil {
+		return x.KvGet
+	}
+	return false
+}
+
+func (x *NodeActionCapabilities) GetKvDelete() bool {
+	if x != nil {
+		return x.KvDelete
+	}
+	return false
+}
+
+type ReportNodeCapabilitiesRequest struct {
+	state          protoimpl.MessageState  `protogen:"open.v1"`
+	ClusterId      string                  `protobuf:"bytes,1,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
+	NodeId         string                  `protobuf:"bytes,2,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	ActiveProtocol *ProtocolAssignment     `protobuf:"bytes,3,opt,name=active_protocol,json=activeProtocol,proto3" json:"active_protocol,omitempty"`
+	Actions        *NodeActionCapabilities `protobuf:"bytes,4,opt,name=actions,proto3" json:"actions,omitempty"`
+	ReportedAt     int64                   `protobuf:"varint,5,opt,name=reported_at,json=reportedAt,proto3" json:"reported_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ReportNodeCapabilitiesRequest) Reset() {
+	*x = ReportNodeCapabilitiesRequest{}
+	mi := &file_internal_protocol_cluster_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReportNodeCapabilitiesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReportNodeCapabilitiesRequest) ProtoMessage() {}
+
+func (x *ReportNodeCapabilitiesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_protocol_cluster_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReportNodeCapabilitiesRequest.ProtoReflect.Descriptor instead.
+func (*ReportNodeCapabilitiesRequest) Descriptor() ([]byte, []int) {
+	return file_internal_protocol_cluster_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ReportNodeCapabilitiesRequest) GetClusterId() string {
+	if x != nil {
+		return x.ClusterId
+	}
+	return ""
+}
+
+func (x *ReportNodeCapabilitiesRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *ReportNodeCapabilitiesRequest) GetActiveProtocol() *ProtocolAssignment {
+	if x != nil {
+		return x.ActiveProtocol
+	}
+	return nil
+}
+
+func (x *ReportNodeCapabilitiesRequest) GetActions() *NodeActionCapabilities {
+	if x != nil {
+		return x.Actions
+	}
+	return nil
+}
+
+func (x *ReportNodeCapabilitiesRequest) GetReportedAt() int64 {
+	if x != nil {
+		return x.ReportedAt
+	}
+	return 0
+}
+
+type ReportNodeCapabilitiesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReportNodeCapabilitiesResponse) Reset() {
+	*x = ReportNodeCapabilitiesResponse{}
+	mi := &file_internal_protocol_cluster_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReportNodeCapabilitiesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReportNodeCapabilitiesResponse) ProtoMessage() {}
+
+func (x *ReportNodeCapabilitiesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_protocol_cluster_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReportNodeCapabilitiesResponse.ProtoReflect.Descriptor instead.
+func (*ReportNodeCapabilitiesResponse) Descriptor() ([]byte, []int) {
+	return file_internal_protocol_cluster_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ReportNodeCapabilitiesResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *ReportNodeCapabilitiesResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
 var File_internal_protocol_cluster_proto protoreflect.FileDescriptor
 
 const file_internal_protocol_cluster_proto_rawDesc = "" +
@@ -601,17 +789,33 @@ const file_internal_protocol_cluster_proto_rawDesc = "" +
 	"\x05level\x18\x04 \x01(\tR\x05level\x12\x18\n" +
 	"\amessage\x18\x05 \x01(\tR\amessage\"\x1d\n" +
 	"\vLogResponse\x12\x0e\n" +
-	"\x02ok\x18\x01 \x01(\bR\x02ok*6\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\"c\n" +
+	"\x16NodeActionCapabilities\x12\x15\n" +
+	"\x06kv_put\x18\x01 \x01(\bR\x05kvPut\x12\x15\n" +
+	"\x06kv_get\x18\x02 \x01(\bR\x05kvGet\x12\x1b\n" +
+	"\tkv_delete\x18\x03 \x01(\bR\bkvDelete\"\xfa\x01\n" +
+	"\x1dReportNodeCapabilitiesRequest\x12\x1d\n" +
+	"\n" +
+	"cluster_id\x18\x01 \x01(\tR\tclusterId\x12\x17\n" +
+	"\anode_id\x18\x02 \x01(\tR\x06nodeId\x12E\n" +
+	"\x0factive_protocol\x18\x03 \x01(\v2\x1c.protocol.ProtocolAssignmentR\x0eactiveProtocol\x129\n" +
+	"\aactions\x18\x04 \x01(\v2\x1f.cluster.NodeActionCapabilitiesR\aactions\x12\x1f\n" +
+	"\vreported_at\x18\x05 \x01(\x03R\n" +
+	"reportedAt\"J\n" +
+	"\x1eReportNodeCapabilitiesResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage*6\n" +
 	"\x0eRegisterStatus\x12\v\n" +
 	"\aUNKNOWN\x10\x00\x12\v\n" +
 	"\aSUCCESS\x10\x01\x12\n" +
 	"\n" +
-	"\x06FAILED\x10\x022\x99\x02\n" +
+	"\x06FAILED\x10\x022\x84\x03\n" +
 	"\x13OrchestratorService\x12K\n" +
 	"\fRegisterNode\x12\x1c.cluster.RegisterNodeRequest\x1a\x1d.cluster.RegisterNodeResponse\x12B\n" +
 	"\tHeartbeat\x12\x19.cluster.HeartbeatRequest\x1a\x1a.cluster.HeartbeatResponse\x129\n" +
 	"\bGetPeers\x12\x15.cluster.PeersRequest\x1a\x16.cluster.PeersResponse\x126\n" +
-	"\tReportLog\x12\x13.cluster.LogRequest\x1a\x14.cluster.LogResponseB\x1cZ\x1afaultlab/internal/protocolb\x06proto3"
+	"\tReportLog\x12\x13.cluster.LogRequest\x1a\x14.cluster.LogResponse\x12i\n" +
+	"\x16ReportNodeCapabilities\x12&.cluster.ReportNodeCapabilitiesRequest\x1a'.cluster.ReportNodeCapabilitiesResponseB\x1cZ\x1afaultlab/internal/protocolb\x06proto3"
 
 var (
 	file_internal_protocol_cluster_proto_rawDescOnce sync.Once
@@ -626,37 +830,44 @@ func file_internal_protocol_cluster_proto_rawDescGZIP() []byte {
 }
 
 var file_internal_protocol_cluster_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_internal_protocol_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_internal_protocol_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_internal_protocol_cluster_proto_goTypes = []any{
-	(RegisterStatus)(0),          // 0: cluster.RegisterStatus
-	(*RegisterNodeRequest)(nil),  // 1: cluster.RegisterNodeRequest
-	(*RegisterNodeResponse)(nil), // 2: cluster.RegisterNodeResponse
-	(*HeartbeatRequest)(nil),     // 3: cluster.HeartbeatRequest
-	(*HeartbeatResponse)(nil),    // 4: cluster.HeartbeatResponse
-	(*PeersRequest)(nil),         // 5: cluster.PeersRequest
-	(*PeersResponse)(nil),        // 6: cluster.PeersResponse
-	(*NodeInfo)(nil),             // 7: cluster.NodeInfo
-	(*LogRequest)(nil),           // 8: cluster.LogRequest
-	(*LogResponse)(nil),          // 9: cluster.LogResponse
-	(*ProtocolAssignment)(nil),   // 10: protocol.ProtocolAssignment
+	(RegisterStatus)(0),                    // 0: cluster.RegisterStatus
+	(*RegisterNodeRequest)(nil),            // 1: cluster.RegisterNodeRequest
+	(*RegisterNodeResponse)(nil),           // 2: cluster.RegisterNodeResponse
+	(*HeartbeatRequest)(nil),               // 3: cluster.HeartbeatRequest
+	(*HeartbeatResponse)(nil),              // 4: cluster.HeartbeatResponse
+	(*PeersRequest)(nil),                   // 5: cluster.PeersRequest
+	(*PeersResponse)(nil),                  // 6: cluster.PeersResponse
+	(*NodeInfo)(nil),                       // 7: cluster.NodeInfo
+	(*LogRequest)(nil),                     // 8: cluster.LogRequest
+	(*LogResponse)(nil),                    // 9: cluster.LogResponse
+	(*NodeActionCapabilities)(nil),         // 10: cluster.NodeActionCapabilities
+	(*ReportNodeCapabilitiesRequest)(nil),  // 11: cluster.ReportNodeCapabilitiesRequest
+	(*ReportNodeCapabilitiesResponse)(nil), // 12: cluster.ReportNodeCapabilitiesResponse
+	(*ProtocolAssignment)(nil),             // 13: protocol.ProtocolAssignment
 }
 var file_internal_protocol_cluster_proto_depIdxs = []int32{
 	0,  // 0: cluster.RegisterNodeResponse.status:type_name -> cluster.RegisterStatus
-	10, // 1: cluster.RegisterNodeResponse.assigned_protocol:type_name -> protocol.ProtocolAssignment
+	13, // 1: cluster.RegisterNodeResponse.assigned_protocol:type_name -> protocol.ProtocolAssignment
 	7,  // 2: cluster.PeersResponse.peers:type_name -> cluster.NodeInfo
-	1,  // 3: cluster.OrchestratorService.RegisterNode:input_type -> cluster.RegisterNodeRequest
-	3,  // 4: cluster.OrchestratorService.Heartbeat:input_type -> cluster.HeartbeatRequest
-	5,  // 5: cluster.OrchestratorService.GetPeers:input_type -> cluster.PeersRequest
-	8,  // 6: cluster.OrchestratorService.ReportLog:input_type -> cluster.LogRequest
-	2,  // 7: cluster.OrchestratorService.RegisterNode:output_type -> cluster.RegisterNodeResponse
-	4,  // 8: cluster.OrchestratorService.Heartbeat:output_type -> cluster.HeartbeatResponse
-	6,  // 9: cluster.OrchestratorService.GetPeers:output_type -> cluster.PeersResponse
-	9,  // 10: cluster.OrchestratorService.ReportLog:output_type -> cluster.LogResponse
-	7,  // [7:11] is the sub-list for method output_type
-	3,  // [3:7] is the sub-list for method input_type
-	3,  // [3:3] is the sub-list for extension type_name
-	3,  // [3:3] is the sub-list for extension extendee
-	0,  // [0:3] is the sub-list for field type_name
+	13, // 3: cluster.ReportNodeCapabilitiesRequest.active_protocol:type_name -> protocol.ProtocolAssignment
+	10, // 4: cluster.ReportNodeCapabilitiesRequest.actions:type_name -> cluster.NodeActionCapabilities
+	1,  // 5: cluster.OrchestratorService.RegisterNode:input_type -> cluster.RegisterNodeRequest
+	3,  // 6: cluster.OrchestratorService.Heartbeat:input_type -> cluster.HeartbeatRequest
+	5,  // 7: cluster.OrchestratorService.GetPeers:input_type -> cluster.PeersRequest
+	8,  // 8: cluster.OrchestratorService.ReportLog:input_type -> cluster.LogRequest
+	11, // 9: cluster.OrchestratorService.ReportNodeCapabilities:input_type -> cluster.ReportNodeCapabilitiesRequest
+	2,  // 10: cluster.OrchestratorService.RegisterNode:output_type -> cluster.RegisterNodeResponse
+	4,  // 11: cluster.OrchestratorService.Heartbeat:output_type -> cluster.HeartbeatResponse
+	6,  // 12: cluster.OrchestratorService.GetPeers:output_type -> cluster.PeersResponse
+	9,  // 13: cluster.OrchestratorService.ReportLog:output_type -> cluster.LogResponse
+	12, // 14: cluster.OrchestratorService.ReportNodeCapabilities:output_type -> cluster.ReportNodeCapabilitiesResponse
+	10, // [10:15] is the sub-list for method output_type
+	5,  // [5:10] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_internal_protocol_cluster_proto_init() }
@@ -671,7 +882,7 @@ func file_internal_protocol_cluster_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_protocol_cluster_proto_rawDesc), len(file_internal_protocol_cluster_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   9,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

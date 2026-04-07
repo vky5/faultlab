@@ -11,6 +11,7 @@ service OrchestratorService {
   rpc Heartbeat (HeartbeatRequest) returns (HeartbeatResponse);
   rpc GetPeers (PeersRequest) returns (PeersResponse); // Get the info of peers in a cluster
   rpc ReportLog (LogRequest) returns (LogResponse);
+  rpc ReportNodeCapabilities (ReportNodeCapabilitiesRequest) returns (ReportNodeCapabilitiesResponse);
 }
 
 message RegisterNodeRequest {
@@ -69,4 +70,23 @@ message LogRequest {
 
 message LogResponse {
   bool ok = 1;
+}
+
+message NodeActionCapabilities {
+  bool kv_put = 1;
+  bool kv_get = 2;
+  bool kv_delete = 3;
+}
+
+message ReportNodeCapabilitiesRequest {
+  string cluster_id = 1;
+  string node_id = 2;
+  protocol.ProtocolAssignment active_protocol = 3;
+  NodeActionCapabilities actions = 4;
+  int64 reported_at = 5;
+}
+
+message ReportNodeCapabilitiesResponse {
+  bool ok = 1;
+  string message = 2;
 }

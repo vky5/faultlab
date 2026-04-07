@@ -171,6 +171,47 @@ func (s *Service) SetFaultParams(clusterID, nodeID string, fault cluster.FaultSt
 	return s.cluster.SetFaultParams(clusterID, nodeID, fault)
 }
 
+func (s *Service) ReportNodeCapabilities(req *protocol.ReportNodeCapabilitiesRequest) error {
+	if req == nil {
+		return fmt.Errorf("nil capability report request")
+	}
+
+	if req.GetClusterId() == "" {
+		return fmt.Errorf("cluster_id is required")
+	}
+
+	if req.GetNodeId() == "" {
+		return fmt.Errorf("node_id is required")
+	}
+
+	assignment := req.GetActiveProtocol()
+	if assignment == nil {
+		return fmt.Errorf("active_protocol is required")
+	}
+
+	if assignment.GetKey() == "" {
+		return fmt.Errorf("active_protocol.key is required")
+	}
+
+	actions := req.GetActions()
+	if actions == nil {
+		return fmt.Errorf("actions capability contract is required")
+	}
+
+	return s.cluster.SetNodeCapabilities(
+		req.GetClusterId(),
+		req.GetNodeId(),
+		assignment.GetKey(),
+		assignment.GetEpoch(),
+		cluster.NodeActionCapabilities{
+			KVPut:    actions.GetKvPut(),
+			KVGet:    actions.GetKvGet(),
+			KVDelete: actions.GetKvDelete(),
+		},
+		req.GetReportedAt(),
+	)
+}
+
 func (s *Service) ExecuteKVPut(ctx context.Context, clusterID, nodeID, key, value string) error {
 	n, err := s.cluster.GetNode(clusterID, nodeID)
 	if err != nil {

@@ -1,6 +1,9 @@
 *.log
 TODO
 *.sh
-controlplane
 node_modules
 dist
+
+# Ignore root-level compiled binaries only
+/controlplane
+/faultlab

@@ -27,6 +27,28 @@ func NewManager(ns ...NodeSession) *Manager {
 	return mgr
 }
 
+func (m *Manager) SetNodeCapabilities(clusterID, nodeID, activeProtocolKey string, activeProtocolEpoch uint64, actions cluster.NodeActionCapabilities, reportedAt int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	c, ok := m.clusters[clusterID]
+	if !ok {
+		return fmt.Errorf("cluster not found")
+	}
+
+	node, ok := c.Nodes[nodeID]
+	if !ok {
+		return fmt.Errorf("node not found")
+	}
+
+	node.ActiveProtocolKey = activeProtocolKey
+	node.ActiveProtocolEpoch = activeProtocolEpoch
+	node.Capabilities = actions
+	node.CapabilitiesAt = reportedAt
+
+	return nil
+}
+
 type NodeSession interface {
 	SetFaultParams(context.Context, string, int, string, cluster.FaultState) error
 }

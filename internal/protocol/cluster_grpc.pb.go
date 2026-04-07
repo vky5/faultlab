@@ -19,10 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	OrchestratorService_RegisterNode_FullMethodName = "/cluster.OrchestratorService/RegisterNode"
-	OrchestratorService_Heartbeat_FullMethodName    = "/cluster.OrchestratorService/Heartbeat"
-	OrchestratorService_GetPeers_FullMethodName     = "/cluster.OrchestratorService/GetPeers"
-	OrchestratorService_ReportLog_FullMethodName    = "/cluster.OrchestratorService/ReportLog"
+	OrchestratorService_RegisterNode_FullMethodName           = "/cluster.OrchestratorService/RegisterNode"
+	OrchestratorService_Heartbeat_FullMethodName              = "/cluster.OrchestratorService/Heartbeat"
+	OrchestratorService_GetPeers_FullMethodName               = "/cluster.OrchestratorService/GetPeers"
+	OrchestratorService_ReportLog_FullMethodName              = "/cluster.OrchestratorService/ReportLog"
+	OrchestratorService_ReportNodeCapabilities_FullMethodName = "/cluster.OrchestratorService/ReportNodeCapabilities"
 )
 
 // OrchestratorServiceClient is the client API for OrchestratorService service.
@@ -33,6 +34,7 @@ type OrchestratorServiceClient interface {
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
 	GetPeers(ctx context.Context, in *PeersRequest, opts ...grpc.CallOption) (*PeersResponse, error)
 	ReportLog(ctx context.Context, in *LogRequest, opts ...grpc.CallOption) (*LogResponse, error)
+	ReportNodeCapabilities(ctx context.Context, in *ReportNodeCapabilitiesRequest, opts ...grpc.CallOption) (*ReportNodeCapabilitiesResponse, error)
 }
 
 type orchestratorServiceClient struct {
@@ -83,6 +85,16 @@ func (c *orchestratorServiceClient) ReportLog(ctx context.Context, in *LogReques
 	return out, nil
 }
 
+func (c *orchestratorServiceClient) ReportNodeCapabilities(ctx context.Context, in *ReportNodeCapabilitiesRequest, opts ...grpc.CallOption) (*ReportNodeCapabilitiesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReportNodeCapabilitiesResponse)
+	err := c.cc.Invoke(ctx, OrchestratorService_ReportNodeCapabilities_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // OrchestratorServiceServer is the server API for OrchestratorService service.
 // All implementations must embed UnimplementedOrchestratorServiceServer
 // for forward compatibility.
@@ -91,6 +103,7 @@ type OrchestratorServiceServer interface {
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
 	GetPeers(context.Context, *PeersRequest) (*PeersResponse, error)
 	ReportLog(context.Context, *LogRequest) (*LogResponse, error)
+	ReportNodeCapabilities(context.Context, *ReportNodeCapabilitiesRequest) (*ReportNodeCapabilitiesResponse, error)
 	mustEmbedUnimplementedOrchestratorServiceServer()
 }
 
@@ -112,6 +125,9 @@ func (UnimplementedOrchestratorServiceServer) GetPeers(context.Context, *PeersRe
 }
 func (UnimplementedOrchestratorServiceServer) ReportLog(context.Context, *LogRequest) (*LogResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReportLog not implemented")
+}
+func (UnimplementedOrchestratorServiceServer) ReportNodeCapabilities(context.Context, *ReportNodeCapabilitiesRequest) (*ReportNodeCapabilitiesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReportNodeCapabilities not implemented")
 }
 func (UnimplementedOrchestratorServiceServer) mustEmbedUnimplementedOrchestratorServiceServer() {}
 func (UnimplementedOrchestratorServiceServer) testEmbeddedByValue()                             {}
@@ -206,6 +222,24 @@ func _OrchestratorService_ReportLog_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OrchestratorService_ReportNodeCapabilities_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReportNodeCapabilitiesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrchestratorServiceServer).ReportNodeCapabilities(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OrchestratorService_ReportNodeCapabilities_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrchestratorServiceServer).ReportNodeCapabilities(ctx, req.(*ReportNodeCapabilitiesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // OrchestratorService_ServiceDesc is the grpc.ServiceDesc for OrchestratorService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -228,6 +262,10 @@ var OrchestratorService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReportLog",
 			Handler:    _OrchestratorService_ReportLog_Handler,
+		},
+		{
+			MethodName: "ReportNodeCapabilities",
+			Handler:    _OrchestratorService_ReportNodeCapabilities_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

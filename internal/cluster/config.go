@@ -10,6 +10,12 @@ type FaultState struct {
 	Partition []string `json:"partition,omitempty"`
 }
 
+type NodeActionCapabilities struct {
+	KVPut    bool `json:"kvPut"`
+	KVGet    bool `json:"kvGet"`
+	KVDelete bool `json:"kvDelete"`
+}
+
 func DefaultFaultState() FaultState {
 	return FaultState{
 		Crashed:   false,
@@ -21,12 +27,16 @@ func DefaultFaultState() FaultState {
 
 // Details related to cluster
 type Node struct {
-	ID       string     `json:"id"`
-	Address  string     `json:"address"`
-	Port     int        `json:"port"`
-	LastSeen time.Time  `json:"lastSeen"`
-	Status   string     `json:"status,omitempty"` // "active" or "crashed"
-	Fault    FaultState `json:"fault"`
+	ID                  string                 `json:"id"`
+	Address             string                 `json:"address"`
+	Port                int                    `json:"port"`
+	LastSeen            time.Time              `json:"lastSeen"`
+	Status              string                 `json:"status,omitempty"` // "active" or "crashed"
+	Fault               FaultState             `json:"fault"`
+	ActiveProtocolKey   string                 `json:"activeProtocolKey,omitempty"`
+	ActiveProtocolEpoch uint64                 `json:"activeProtocolEpoch,omitempty"`
+	Capabilities        NodeActionCapabilities `json:"capabilities"`
+	CapabilitiesAt      int64                  `json:"capabilitiesAt,omitempty"`
 }
 
 type Cluster struct {
