@@ -112,11 +112,15 @@ func (a *Actor) Run() {
 				clusterIDs := a.manager.GetClusters()
 
 				type NodeInfo struct {
-					ID      string             `json:"id"`
-					Address string             `json:"address"`
-					Port    int                `json:"port"`
-					Status  string             `json:"status,omitempty"`
-					Fault   cluster.FaultState `json:"fault"`
+					ID                  string                         `json:"id"`
+					Address             string                         `json:"address"`
+					Port                int                            `json:"port"`
+					Status              string                         `json:"status,omitempty"`
+					Fault               cluster.FaultState             `json:"fault"`
+					ActiveProtocolKey   string                         `json:"activeProtocolKey,omitempty"`
+					ActiveProtocolEpoch uint64                         `json:"activeProtocolEpoch,omitempty"`
+					Capabilities        cluster.NodeActionCapabilities `json:"capabilities"`
+					CapabilitiesAt      int64                          `json:"capabilitiesAt,omitempty"`
 				}
 				type ClusterInfo struct {
 					ID       string     `json:"id"`
@@ -134,11 +138,15 @@ func (a *Actor) Run() {
 					var ni []NodeInfo
 					for _, node := range nodes {
 						ni = append(ni, NodeInfo{
-							ID:      node.ID,
-							Address: node.Address,
-							Port:    node.Port,
-							Status:  node.Status,
-							Fault:   node.Fault,
+							ID:                  node.ID,
+							Address:             node.Address,
+							Port:                node.Port,
+							Status:              node.Status,
+							Fault:               node.Fault,
+							ActiveProtocolKey:   node.ActiveProtocolKey,
+							ActiveProtocolEpoch: node.ActiveProtocolEpoch,
+							Capabilities:        node.Capabilities,
+							CapabilitiesAt:      node.CapabilitiesAt,
 						})
 					}
 

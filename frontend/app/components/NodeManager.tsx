@@ -12,7 +12,9 @@ export function NodeManager({ selectedCluster }: { selectedCluster: ClusterInfo 
     handleSetDropRate,
     handleSetDelay,
     handleSetPartition,
+    handleSwapProtocol,
     getNodeStatus,
+    isLiveMode,
   } = useClusterStore();
 
   const [isInjectOpen, setIsInjectOpen] = useState(false);
@@ -120,16 +122,59 @@ export function NodeManager({ selectedCluster }: { selectedCluster: ClusterInfo 
         </div>
       )}
 
+      {/* Premium Simulation Warning Banner */}
+      {!isLiveMode && (
+        <div className="relative overflow-hidden p-4 rounded-2xl bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-transparent border border-amber-500/20 shadow-sm backdrop-blur-sm group">
+          <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none">
+            <ShieldAlert className="w-16 h-16 text-amber-500 -mr-4 -mt-4 rotate-12" />
+          </div>
+          <div className="relative flex items-center gap-4">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center border border-amber-500/20 shadow-inner">
+              <ShieldAlert className="w-5 h-5 text-amber-600" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-0.5">
+                <h4 className="text-[11px] font-black text-amber-900/80 uppercase tracking-widest">Simulation Active</h4>
+                <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+              </div>
+              <p className="text-[10px] text-amber-800/70 font-medium leading-relaxed">
+                You are running an isolated browser flight. Connection to controlplane is currently <span className="font-bold">offline</span>.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Nodes Panel */}
       <div className="card flex-1 flex flex-col p-0 overflow-hidden min-h-0">
         <div className="px-4 py-3 border-b border-border bg-gradient-to-r from-muted/50 to-muted/30 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Network className="w-4 h-4 text-primary" />
-            <span className="text-sm font-semibold">Active Nodes</span>
+            <span className="text-sm font-semibold">Nodes</span>
           </div>
-          <span className="text-xs font-mono bg-primary/10 text-primary px-2 py-1 rounded-full font-semibold">
-            {selectedCluster.nodes?.length || 0}
-          </span>
+          <div className="flex items-center gap-3">
+            <div className="flex bg-muted/50 p-0.5 rounded-lg border border-border/50">
+              {["gossip", "raft"].map((p) => (
+                <button
+                  key={p}
+                  onClick={() => handleSwapProtocol(selectedCluster.id, p)}
+                  className={`px-3 py-1 text-[9px] font-black uppercase tracking-widest rounded-md transition-all ${
+                    selectedCluster.protocol === p 
+                      ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" 
+                      : "text-muted-foreground hover:bg-muted-foreground/10"
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-primary/5 border border-primary/10">
+              <Activity className="w-3 h-3 text-primary/60" />
+              <span className="text-[10px] font-bold text-primary/80 tabular-nums">
+                {selectedCluster.nodes?.length || 0}
+              </span>
+            </div>
+          </div>
         </div>
         
         <div className="flex-1 overflow-y-auto p-3 space-y-2 hide-scrollbar">
@@ -177,6 +222,22 @@ export function NodeManager({ selectedCluster }: { selectedCluster: ClusterInfo 
                       </div>
                       <div className="text-xs text-muted-foreground font-mono flex items-center gap-1 mt-0.5">
                         <span>{node.address}:{node.port}</span>
+                        <span className="mx-1 opacity-30">•</span>
+                        <span className="text-[10px] uppercase font-bold text-primary/70">{node.activeProtocolKey || "init..."}</span>
+                      </div>
+                      <div className="flex gap-1.5 mt-1.5">
+                        {node.capabilities?.kvPut && (
+                          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/5 border border-primary/10" title="Supports KV Put">
+                            <Database className="w-2.5 h-2.5 text-primary/60" />
+                            <span className="text-[9px] font-bold text-primary/60 tracking-tighter">PUT</span>
+                          </div>
+                        )}
+                        {node.capabilities?.kvGet && (
+                          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/5 border border-primary/10" title="Supports KV Get">
+                            <Database className="w-2.5 h-2.5 text-primary/60" />
+                            <span className="text-[9px] font-bold text-primary/60 tracking-tighter">GET</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -299,9 +360,15 @@ export function NodeManager({ selectedCluster }: { selectedCluster: ClusterInfo 
                         </div>
                       </div>
                       {/* KV State Management */}
-                      <div className="pt-3 border-t border-border/30">
-                        <KVManager clusterId={selectedCluster.id} nodeId={node.id} />
-                      </div>
+                      {(node.capabilities?.kvPut || node.capabilities?.kvGet) ? (
+                        <div className="pt-3 border-t border-border/30">
+                          <KVManager clusterId={selectedCluster.id} nodeId={node.id} />
+                        </div>
+                      ) : (
+                        <div className="pt-3 border-t border-border/30 text-center">
+                          <p className="text-[10px] text-muted-foreground italic">KV Operations not supported by protocol</p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

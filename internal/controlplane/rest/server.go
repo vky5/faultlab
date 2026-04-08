@@ -121,6 +121,9 @@ func (s *Server) HandleNodes(w http.ResponseWriter, r *http.Request) {
 		nodeID := parts[5]
 		s.heartbeat(w, r, clusterID, nodeID)
 		return
+	} else if r.Method == http.MethodPatch && len(parts) == 5 && parts[4] == "protocol" {
+		s.swapProtocol(w, r, clusterID)
+		return
 	} else if (r.Method == http.MethodPost || r.Method == http.MethodGet) && len(parts) >= 7 && parts[6] == "kv" {
 		nodeID := parts[5]
 		s.handleKV(w, r, clusterID, nodeID)
@@ -389,4 +392,30 @@ func (s *Server) handleKV(w http.ResponseWriter, r *http.Request, clusterID, nod
 	}
 
 	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+}
+
+type swapProtocolReq struct {
+	Protocol string `json:"protocol"`
+}
+
+func (s *Server) swapProtocol(w http.ResponseWriter, r *http.Request, clusterID string) {
+	var req swapProtocolReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	cmd := controlplane.NewCommand(controlplane.CmdSetClusterProtocol)
+	cmd.ClusterID = clusterID
+	cmd.Protocol = req.Protocol
+	s.actor.Submit(cmd)
+
+	_, err := cmd.MapWait()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }

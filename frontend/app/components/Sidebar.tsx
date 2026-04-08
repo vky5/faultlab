@@ -1,9 +1,9 @@
 import React, { useState } from "react";
-import { Plus, Server, Network, ChevronRight } from "lucide-react";
+import { Plus, Server, Network, ChevronRight, Activity, ShieldCheck, HelpCircle } from "lucide-react";
 import { useClusterStore } from "../store";
 
 export function Sidebar() {
-  const { clusters, selectedClusterId, setSelectedClusterId, handleCreateCluster, isSimulationRunning, isPaused, togglePause } = useClusterStore();
+  const { clusters, selectedClusterId, setSelectedClusterId, handleCreateCluster, isSimulationRunning, isPaused, togglePause, isLiveMode } = useClusterStore();
   const [isCreatingCluster, setIsCreatingCluster] = useState(false);
   const [newClusterId, setNewClusterId] = useState("");
   const [newClusterProtocol, setNewClusterProtocol] = useState("gossip");
@@ -27,7 +27,20 @@ export function Sidebar() {
             <Network className="w-5 h-5 text-primary-foreground" />
           </div>
           <div>
-            <span className="font-bold text-lg tracking-tight">Faultlab</span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-bold text-lg tracking-tight">Faultlab</span>
+              {isLiveMode ? (
+                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-success/10 border border-success/20 animate-in fade-in zoom-in duration-500">
+                  <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+                  <span className="text-[8px] font-black tracking-tighter text-success uppercase">Live</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 animate-in fade-in zoom-in duration-500">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  <span className="text-[8px] font-black tracking-tighter text-amber-600 uppercase">Sim</span>
+                </div>
+              )}
+            </div>
             <p className="text-[10px] text-muted-foreground font-medium">Distributed Systems Lab</p>
           </div>
         </div>
@@ -138,32 +151,45 @@ export function Sidebar() {
 
       {/* Bottom Actions */}
       <div className="p-4 border-t border-border/50 bg-gradient-to-t from-muted/30 to-transparent">
-        <div className="space-y-2">
+        <div className="space-y-3">
           <button 
             onClick={togglePause}
-            className={`flex items-center justify-between w-full p-3 rounded-xl border transition-all group ${
+            className={`flex items-center justify-between w-full p-2.5 rounded-xl border transition-all group ${
               isPaused 
                 ? "bg-warning/10 border-warning/30 text-warning" 
                 : "bg-card border-border hover:border-primary/30"
             }`}
           >
             <div className="flex items-center gap-3">
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
                 isPaused 
                   ? "bg-warning/20 text-warning" 
                   : "bg-primary/10 text-primary group-hover:bg-primary/20"
               }`}>
-                <Network className={`w-4 h-4 ${isPaused ? "animate-pulse" : ""}`} />
+                <Network className={`w-3.5 h-3.5 ${isPaused ? "animate-pulse" : ""}`} />
               </div>
-              <div>
-                <span className="text-sm font-medium">{isPaused ? "Paused" : "Live"}</span>
-                <p className="text-[10px] text-muted-foreground">{isPaused ? "Click to resume" : "Simulation running"}</p>
+              <div className="text-left">
+                <span className="text-xs font-medium">{isPaused ? "Paused" : "Live Simulation"}</span>
               </div>
             </div>
-            <div className={`w-2 h-2 rounded-full ${isPaused ? "bg-warning" : "bg-success"} animate-pulse`} />
+            <div className={`w-1.5 h-1.5 rounded-full ${isPaused ? "bg-warning" : "bg-success"} animate-pulse`} />
           </button>
+
+          <div className="pt-1">
+            <div className="p-3 rounded-xl bg-muted/30 border border-border/50 flex items-center justify-between group hover:border-primary/20 transition-all">
+              <div className="flex items-center gap-3">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${isLiveMode ? 'bg-success/10 text-success' : 'bg-amber-500/10 text-amber-600'}`}>
+                  {isLiveMode ? <Activity className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground/60 tracking-wider leading-tight">System Status</p>
+                  <p className="text-xs font-semibold leading-tight">{isLiveMode ? 'Connected to Controlplane' : 'Local Browser Simulation'}</p>
+                </div>
+              </div>
+            </div>
+          </div>
           
-          <div className="text-[10px] text-center text-muted-foreground/60 pt-2">
+          <div className="text-[10px] text-center text-muted-foreground/60 pt-2 border-t border-border/20 mt-1">
             Faultlab v1.0
           </div>
         </div>
