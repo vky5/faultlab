@@ -76,22 +76,33 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
     status: "active" as const
   };
 
-  // Create edges - connect ALL nodes (complete graph)
+  // Create edges - connect nodes while respecting network partitions
   const edges: Array<{ source: any; target: any; id: string }> = [];
   for (let i = 0; i < positionedNodes.length; i++) {
+    const source = positionedNodes[i];
+
     // Connect to other nodes
     for (let j = i + 1; j < positionedNodes.length; j++) {
-      edges.push({
-        source: positionedNodes[i],
-        target: positionedNodes[j],
-        id: `${positionedNodes[i].id}-${positionedNodes[j].id}`,
-      });
+      const target = positionedNodes[j];
+      
+      // Only add edge if there is NO partition between source and target
+      const isPartitioned = source.fault?.partition?.includes(target.id) || 
+                          target.fault?.partition?.includes(source.id);
+      
+      if (!isPartitioned) {
+        edges.push({
+          source: source,
+          target: target,
+          id: `${source.id}-${target.id}`,
+        });
+      }
     }
-    // Connect to Control Plane
+
+    // Connect to Control Plane (Management links are always visible)
     edges.push({
       source: cpNode,
-      target: positionedNodes[i],
-      id: `CP-${positionedNodes[i].id}`,
+      target: source,
+      id: `CP-${source.id}`,
     });
   }
 

@@ -100,16 +100,16 @@ func (g *GossipProtocol) Tick() []protocol.Envelope {
 
 	payload := protocol.EncodeJSON(gm)
 	g.logGossipf("node %s tick %d: sending digest with %d keys to %s (%d bytes)", g.nodeID, g.tick, len(gm.Digest), peer, len(payload))
-	g.logGossipf("TRACE:SEND:%s:%s:GOSSIP_DIGEST:%s:%d", g.nodeID, peer, keyPrefix, len(payload))
 
 	envelope := protocol.Envelope{
-		From:        g.nodeID,
-		To:          peer,
-		Protocol:    "gossip",
-		Payload:     protocol.EncodeJSON(gm),
-		Kind:        protocol.KindProtocol,
-		Version:     1,
-		LogicalTick: g.tick,
+		From:          g.nodeID,
+		To:            peer,
+		Protocol:      "gossip",
+		Payload:       payload,
+		Kind:          protocol.KindProtocol,
+		TraceMetadata: fmt.Sprintf("GOSSIP_DIGEST:%s", keyPrefix),
+		Version:       1,
+		LogicalTick:   g.tick,
 	}
 	return []protocol.Envelope{envelope}
 }
@@ -180,15 +180,15 @@ func (g *GossipProtocol) handleDigest(from string, msg GossipMessage) []protocol
 
 		payload := protocol.EncodeJSON(stateMsg)
 		g.logGossipf("sending STATE to %s with %d updated keys (%d bytes)", from, len(stateMsg.State), len(payload))
-		g.logGossipf("TRACE:SEND:%s:%s:GOSSIP_STATE:%s:%d", g.nodeID, from, stateMeta, len(payload))
 		out = append(out, protocol.Envelope{
-			From:        g.nodeID,
-			To:          from,
-			Protocol:    "gossip",
-			Payload:     protocol.EncodeJSON(stateMsg),
-			Kind:        protocol.KindProtocol,
-			Version:     1,
-			LogicalTick: g.tick,
+			From:          g.nodeID,
+			To:            from,
+			Protocol:      "gossip",
+			Payload:       payload,
+			Kind:          protocol.KindProtocol,
+			TraceMetadata: fmt.Sprintf("GOSSIP_STATE:%s", stateMeta),
+			Version:       1,
+			LogicalTick:   g.tick,
 		})
 	}
 
@@ -214,16 +214,16 @@ func (g *GossipProtocol) handleDigest(from string, msg GossipMessage) []protocol
 		}
 		
 		payload := protocol.EncodeJSON(digestMsg)
-		g.logGossipf("TRACE:SEND:%s:%s:GOSSIP_SYNC_REQ:%d_keys:%d", g.nodeID, from, len(digestMsg.Digest), len(payload))
 		
 		out = append(out, protocol.Envelope{
-			From:        g.nodeID,
-			To:          from,
-			Protocol:    "gossip",
-			Payload:     payload,
-			Kind:        protocol.KindProtocol,
-			Version:     1,
-			LogicalTick: g.tick,
+			From:          g.nodeID,
+			To:            from,
+			Protocol:      "gossip",
+			Payload:       payload,
+			Kind:          protocol.KindProtocol,
+			TraceMetadata: fmt.Sprintf("GOSSIP_SYNC_REQ:%d_keys", len(digestMsg.Digest)),
+			Version:       1,
+			LogicalTick:   g.tick,
 		})
 	}
 

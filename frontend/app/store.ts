@@ -371,6 +371,31 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
   },
 
   handleSetPartition: async (clusterId, nodeId, peerId, enabled) => {
+    if (!get().isLiveMode) {
+      set((state) => ({
+        clusters: state.clusters.map(c => 
+          c.id === clusterId ? {
+            ...c,
+            nodes: c.nodes.map(n => {
+              // Symmetric update in simulation mode
+              if (n.id === nodeId) {
+                const p = n.fault?.partition || [];
+                const next = enabled ? Array.from(new Set([...p, peerId])) : p.filter(id => id !== peerId);
+                return { ...n, fault: { ...(n.fault || { crashed: false, dropRate: 0, delayMs: 0 }), partition: next } };
+              }
+              if (n.id === peerId) {
+                const p = n.fault?.partition || [];
+                const next = enabled ? Array.from(new Set([...p, nodeId])) : p.filter(id => id !== nodeId);
+                return { ...n, fault: { ...(n.fault || { crashed: false, dropRate: 0, delayMs: 0 }), partition: next } };
+              }
+              return n;
+            })
+          } : c
+        )
+      }));
+      return true;
+    }
+
     try {
       const res = await fetch(`${API_BASE}/clusters/${clusterId}/nodes/${nodeId}/faults/partition`, {
         method: "POST",

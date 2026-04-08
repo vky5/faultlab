@@ -18,6 +18,7 @@ type Envelope struct {
 	Payload  []byte
 
 	Kind MessageKind
+	TraceMetadata string // metadata for tracing (e.g. GOSSIP_DIGEST:keys=[a,b])
 
 	Version     uint16
 	LogicalTick uint64

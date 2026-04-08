@@ -37,4 +37,5 @@ type NodeSession interface {
 	Start(ctx context.Context)                          // start internal loops
 	GetTransportHealth(id string) TransportHealth       // runtime reads state
 	Send(ctx context.Context, env proto.Envelope) error // sending message
+	SetLogger(logger *Logger)                           // inject logger for tracing
 }

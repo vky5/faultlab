@@ -42,14 +42,16 @@ type Runtime struct {
 
 // New creates a new Runtime instance with the given configuration and sessions.
 // The runtime is not yet started; call Start() to begin operations.
-func New(cfg node.NodeConfig, cp CPSession, ns NodeSession, runtimeConfig config.NodeRuntimeConfig) Runtime {
-	return Runtime{
+func New(cfg node.NodeConfig, cp CPSession, ns NodeSession, runtimeConfig config.NodeRuntimeConfig) *Runtime {
+	r := &Runtime{
 		config:        cfg,
 		runtimeConfig: runtimeConfig,
 		cp:            cp,
 		ns:            ns,
 		logger:        NewLogger(cfg.ID, "runtime", cp),
 	}
+	ns.SetLogger(r.logger)
+	return r
 }
 
 // Start initializes and runs the node runtime. It:

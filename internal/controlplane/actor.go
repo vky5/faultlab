@@ -232,33 +232,46 @@ func (a *Actor) Run() {
 				cmd.Reply(map[string]any{"status": "ok"}, nil)
 
 			case CmdSetPartition:
-				n, err := a.manager.GetNode(cmd.ClusterID, cmd.NodeID)
-				if err != nil {
-					cmd.Reply(nil, err)
-					continue
-				}
-				fault := n.Fault
-				next := make([]string, 0, len(fault.Partition)+1)
-				seen := false
-				for _, peer := range fault.Partition {
-					if peer == cmd.PeerID {
-						seen = true
-						if cmd.Enabled {
-							next = append(next, peer)
-						}
-						continue
+				// Helper to update partition list for a single node
+				updateNodePartition := func(targetNodeID, otherPeerID string, enabled bool) error {
+					n, err := a.manager.GetNode(cmd.ClusterID, targetNodeID)
+					if err != nil {
+						return err
 					}
-					next = append(next, peer)
+					fault := n.Fault
+					next := make([]string, 0, len(fault.Partition)+1)
+					seen := false
+					for _, peer := range fault.Partition {
+						if peer == otherPeerID {
+							seen = true
+							if enabled {
+								next = append(next, peer)
+							}
+							continue
+						}
+						next = append(next, peer)
+					}
+					if enabled && !seen {
+						next = append(next, otherPeerID)
+					}
+					fault.Partition = next
+					return a.service.SetFaultParams(cmd.ClusterID, targetNodeID, fault)
 				}
-				if cmd.Enabled && !seen {
-					next = append(next, cmd.PeerID)
-				}
-				fault.Partition = next
-				if err := a.service.SetFaultParams(cmd.ClusterID, cmd.NodeID, fault); err != nil {
+
+				// 1. Update the requested node (Node A -> Node B)
+				if err := updateNodePartition(cmd.NodeID, cmd.PeerID, cmd.Enabled); err != nil {
+					log.Printf("symmetric partition failed for Node A (%s): %v", cmd.NodeID, err)
 					cmd.Reply(nil, err)
 					continue
 				}
-				cmd.Reply(map[string]any{"status": "ok"}, nil)
+
+				// 2. Symmetric update: Update the peer (Node B -> Node A)
+				if err := updateNodePartition(cmd.PeerID, cmd.NodeID, cmd.Enabled); err != nil {
+					log.Printf("symmetric partition failed for Node B (%s): %v", cmd.PeerID, err)
+					// We continue even if Node B failed, but we report Node A's success in state
+				}
+
+				cmd.Reply(map[string]any{"status": "ok", "mode": "symmetric"}, nil)
 
 			case CmdKVPut:
 				err := a.service.ExecuteKVPut(a.ctx, cmd.ClusterID, cmd.NodeID, cmd.Key, cmd.Value)

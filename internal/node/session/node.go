@@ -68,7 +68,23 @@ type nodeSession struct {
 
 	probeInterval time.Duration // TODO check if we need runtime to handle this or this is better. If this is better strategy, implement something similar for controlplane session as well
 
-	fault exec.FaultDecider
+	fault  exec.FaultDecider
+	logger *noderuntime.Logger
+}
+
+func (ns *nodeSession) SetLogger(l *noderuntime.Logger) {
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+	ns.logger = l
+}
+
+// logf reports to ControlPlane via ns.logger if available
+func (ns *nodeSession) logf(format string, args ...any) {
+	if ns.logger != nil {
+		ns.logger.Printf(format, args...)
+	} else {
+		logSessionf(format, args...)
+	}
 }
 
 // sending message to other node (doesnt check for should connect)
@@ -85,21 +101,24 @@ func (ns *nodeSession) Send(ctx context.Context, env proto.Envelope) error {
 	if ns.fault != nil {
 		decision := ns.fault.BeforeSend(ps.id)
 		if !decision.Allow {
-			logSessionf("[node:%s] send blocked by fault: to=%s protocol=%s reason=%s\n", ns.nodeID, ps.id, env.Protocol, decision.Reason)
+			ns.logf("[node:%s] send blocked by fault: to=%s protocol=%s reason=%s\n", ns.nodeID, ps.id, env.Protocol, decision.Reason)
 			return nil
 		}
 		if decision.Delay > 0 {
-			logSessionf("[node:%s] send delayed: to=%s protocol=%s delay=%v\n", ns.nodeID, ps.id, env.Protocol, decision.Delay)
+			ns.logf("[node:%s] send delayed: to=%s protocol=%s delay=%v\n", ns.nodeID, ps.id, env.Protocol, decision.Delay)
 			select {
 			case <-time.After(decision.Delay):
 			case <-ctx.Done():
 				return ctx.Err()
 			}
 		} else {
-			logSessionf("[node:%s] send no-delay: to=%s protocol=%s\n", ns.nodeID, ps.id, env.Protocol)
+			ns.logf("[node:%s] send no-delay: to=%s protocol=%s\n", ns.nodeID, ps.id, env.Protocol)
 		}
 	}
 	// ---------- END FAULT ----------
+	if env.TraceMetadata != "" {
+		ns.logf("TRACE:SEND:%s:%s:%s:%d", env.From, env.To, env.TraceMetadata, len(env.Payload))
+	}
 
 	// lazy connect
 	if ps.conn == nil {
@@ -139,14 +158,14 @@ func (ns *nodeSession) Send(ctx context.Context, env proto.Envelope) error {
 
 // starting the initial connection with all nodes in a cluster
 func (ns *nodeSession) Start(ctx context.Context) {
-	logSessionf("[node:%s] starting probe loop (interval=%v)\n", ns.nodeID, ns.probeInterval)
+	ns.logf("[node:%s] starting probe loop (interval=%v)\n", ns.nodeID, ns.probeInterval)
 	ticker := time.NewTicker(ns.probeInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			logSessionf("[node:%s] stopping probe loop\n", ns.nodeID)
+			ns.logf("[node:%s] stopping probe loop\n", ns.nodeID)
 			ns.closeAllConnections()
 			return
 		case <-ticker.C:
@@ -155,15 +174,15 @@ func (ns *nodeSession) Start(ctx context.Context) {
 				tick = ns.fault.BeforeTick()
 			}
 			if !tick.Allow {
-				logSessionf("[node:%s] probe loop tick blocked by fault: reason=%s\n", ns.nodeID, tick.Reason)
+				ns.logf("[node:%s] probe loop tick blocked by fault: reason=%s\n", ns.nodeID, tick.Reason)
 				continue
 			}
 			if tick.Delay > 0 {
-				logSessionf("[node:%s] probe loop tick delayed by %v\n", ns.nodeID, tick.Delay)
+				ns.logf("[node:%s] probe loop tick delayed by %v\n", ns.nodeID, tick.Delay)
 				select {
 				case <-time.After(tick.Delay):
 				case <-ctx.Done():
-					logSessionf("[node:%s] stopping probe loop\n", ns.nodeID)
+					ns.logf("[node:%s] stopping probe loop\n", ns.nodeID)
 					ns.closeAllConnections()
 					return
 				}
@@ -182,18 +201,18 @@ func (ns *nodeSession) probeOnce(ctx context.Context) {
 	}
 	ns.mu.Unlock()
 
-	logSessionf("[node:%s] probing %d peers...\n", ns.nodeID, len(peers))
+	ns.logf("[node:%s] probing %d peers...\n", ns.nodeID, len(peers))
 	for _, ps := range peers {
 		probe := exec.ProbeDecision{Allow: true, Reason: "no-fault-decider"}
 		if ns.fault != nil {
 			probe = ns.fault.BeforeProbe(ps.id)
 		}
 		if !probe.Allow {
-			logSessionf("[node:%s] probe blocked by fault: to=%s reason=%s\n", ns.nodeID, ps.id, probe.Reason)
+			ns.logf("[node:%s] probe blocked by fault: to=%s reason=%s\n", ns.nodeID, ps.id, probe.Reason)
 			continue
 		}
 		if probe.Delay > 0 {
-			logSessionf("[node:%s] probe delayed: to=%s delay=%v\n", ns.nodeID, ps.id, probe.Delay)
+			ns.logf("[node:%s] probe delayed: to=%s delay=%v\n", ns.nodeID, ps.id, probe.Delay)
 			time.Sleep(probe.Delay)
 		}
 		// deterministic dialing: only owner initiates probes
@@ -215,13 +234,13 @@ func (ns *nodeSession) probePeer(ctx context.Context, ps *peerState) {
 	if ps.conn == nil {
 		c, err := ns.dial(ctx, ps.host, ps.port)
 		if err != nil {
-			logSessionf("[node:%s] probe %s: dial failed: %v\n", ns.nodeID, ps.id, err)
+			ns.logf("[node:%s] probe %s: dial failed: %v\n", ns.nodeID, ps.id, err)
 			ns.updateFailure(ps)
 			return
 		}
 		ps.conn = c
 		if err := ns.handshake(ctx, ps); err != nil {
-			logSessionf("[node:%s] probe %s: handshake failed: %v\n", ns.nodeID, ps.id, err)
+			ns.logf("[node:%s] probe %s: handshake failed: %v\n", ns.nodeID, ps.id, err)
 		}
 	}
 
@@ -230,12 +249,12 @@ func (ns *nodeSession) probePeer(ctx context.Context, ps *peerState) {
 
 	_, err := ps.conn.client.Ping(opCtx, &protocol.PingRequest{From: ns.nodeID})
 	if err != nil {
-		logSessionf("[node:%s] probe %s (%s:%d): ping failed: %v\n", ns.nodeID, ps.id, ps.host, ps.port, err)
+		ns.logf("[node:%s] probe %s (%s:%d): ping failed: %v\n", ns.nodeID, ps.id, ps.host, ps.port, err)
 		ns.updateFailure(ps)
 		return
 	}
 
-	logSessionf("[node:%s] probe %s (%s:%d): alive\n", ns.nodeID, ps.id, ps.host, ps.port)
+	ns.logf("[node:%s] probe %s (%s:%d): alive\n", ns.nodeID, ps.id, ps.host, ps.port)
 	ns.updateSuccess(ps)
 }
 

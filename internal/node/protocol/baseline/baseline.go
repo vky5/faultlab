@@ -108,15 +108,12 @@ func (b *BaselineProtocol) Tick() []protocol.Envelope {
 		for _, peer := range alivePeers {
 
 			env := protocol.Envelope{
-				From:     b.nodeID,
-				To:       peer,
-				Protocol: "baseline",
-				Kind:     protocol.KindProtocol,
-				Payload:  []byte("HEARTBEAT"),
-			}
-
-			if b.logger != nil {
-				b.logger.Printf("TRACE:SEND:%s:%s:BASELINE_HEARTBEAT", b.nodeID, peer)
+				From:          b.nodeID,
+				To:            peer,
+				Protocol:      "baseline",
+				Kind:          protocol.KindProtocol,
+				Payload:       []byte("HEARTBEAT"),
+				TraceMetadata: "BASELINE_HEARTBEAT",
 			}
 
 			out = append(out, env)
@@ -272,11 +269,25 @@ func (b *BaselineProtocol) makeMembershipEnvelope(
 	}
 
 	return protocol.Envelope{
-		From:     b.nodeID,
-		To:       "", // broadcast
-		Protocol: "baseline",
-		Kind:     protocol.KindProtocol,
-		Payload:  protocol.EncodeJSON(ev),
+		From:          b.nodeID,
+		To:            "", // broadcast
+		Protocol:      "baseline",
+		Kind:          protocol.KindProtocol,
+		Payload:       protocol.EncodeJSON(ev),
+		TraceMetadata: "BASELINE_MEMBERSHIP:" + string(statusName(status)),
+	}
+}
+
+func statusName(s MembershipStatus) string {
+	switch s {
+	case StatusAlive:
+		return "ALIVE"
+	case StatusSuspect:
+		return "SUSPECT"
+	case StatusDead:
+		return "DEAD"
+	default:
+		return "UNKNOWN"
 	}
 }
 
