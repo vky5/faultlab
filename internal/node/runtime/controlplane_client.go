@@ -31,7 +31,6 @@ func (r *Runtime) runControlplaneSyncCycle(ctx context.Context) {
 		r.logger.Printf("heartbeat failed: %v", err)
 		return
 	}
-
 }
 
 // registerNodeWithControlPlane performs initial registration.
@@ -158,6 +157,6 @@ func (r *Runtime) reportCapabilitiesToControlPlane(parentCtx context.Context, pr
 		return err
 	}
 
-	r.logger.Printf("capabilities reported: protocol=%s epoch=%d actions=%+v", protocolKey, epoch, capabilities.Actions)
+	r.logger.Printf("capabilities reported: protocol=%s epoch=%d capabilities=%+v", protocolKey, epoch, capabilities)
 	return nil
 }

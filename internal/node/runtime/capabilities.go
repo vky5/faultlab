@@ -3,13 +3,9 @@ package runtime
 import "fmt"
 
 type ProtocolCapabilities struct {
-	Actions ActionCapabilities `json:"actions"`
-}
-
-type ActionCapabilities struct {
-	KVPut    bool `json:"kv_put"`
-	KVGet    bool `json:"kv_get"`
-	KVDelete bool `json:"kv_delete"`
+	KVPut    bool `json:"kvPut"`
+	KVGet    bool `json:"kvGet"`
+	KVDelete bool `json:"kvDelete"`
 }
 
 type KVPut interface {
@@ -83,17 +79,11 @@ func DeleteAction(proto any, args ...string) error {
 func CheckCapabilities(proto any) ProtocolCapabilities {
 	_, _, getErr := GetAction(proto)
 
-	actions := ActionCapabilities{
+	return ProtocolCapabilities{
 		KVPut:    PutAction(proto) == nil,
 		KVGet:    getErr == nil,
 		KVDelete: DeleteAction(proto) == nil,
 	}
-
-	capabilities := ProtocolCapabilities{
-		Actions: actions,
-	}
-
-	return capabilities
 }
 
 func CheckProtocol(proto any) ProtocolCapabilities {

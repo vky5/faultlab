@@ -204,7 +204,7 @@ func (g *GossipProtocol) handleDigest(from string, msg GossipMessage) []protocol
 	// ---------- 3. SEND DIGEST BACK (trigger reverse sync) ----------
 	if behind {
 		g.logGossipf("local node %s is behind %s, requesting reverse sync", g.nodeID, from)
-		
+
 		digestMsg := GossipMessage{
 			Type:   MsgDigest,
 			Digest: make(map[string]int64),
@@ -212,9 +212,9 @@ func (g *GossipProtocol) handleDigest(from string, msg GossipMessage) []protocol
 		for k, v := range g.store {
 			digestMsg.Digest[k] = v.Version
 		}
-		
+
 		payload := protocol.EncodeJSON(digestMsg)
-		
+
 		out = append(out, protocol.Envelope{
 			From:          g.nodeID,
 			To:            from,
@@ -332,6 +332,23 @@ func (g *GossipProtocol) Put(key, data string) {
 	} else {
 		g.store[key] = Value{Data: data, Version: current.Version + 1, NodeID: g.nodeID}
 		g.logGossipf("PUT updated key=%s version=%d", key, g.store[key].Version)
+	}
+}
+
+// Get retrieves a value from the local store
+func (g *GossipProtocol) Get(key string) (string, bool) {
+	val, ok := g.store[key]
+	if !ok {
+		return "", false
+	}
+	return val.Data, true
+}
+
+// Delete removes a key from the local store (version-neutral for now)
+func (g *GossipProtocol) Delete(key string) {
+	if _, ok := g.store[key]; ok {
+		delete(g.store, key)
+		g.logGossipf("DELETE key=%s", key)
 	}
 }
 

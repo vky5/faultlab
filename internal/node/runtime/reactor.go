@@ -37,7 +37,14 @@ func (r *Runtime) runProtocolLoop() {
 
 			case EventProtocolSwap:
 				err := r.applyProtocolSwap(ev.ProtocolKey)
-				if err != nil {
+				if err == nil {
+					// Report updated capabilities to Control Plane in background
+					go func(key string) {
+						if reportErr := r.reportCapabilitiesToControlPlane(r.ctx, key, 0); reportErr != nil {
+							r.logger.Printf("failed to report capabilities: %v", reportErr)
+						}
+					}(ev.ProtocolKey)
+				} else {
 					r.logger.Printf("protocol swap failed: %v", err)
 				}
 				if ev.SwapErr != nil {

@@ -206,9 +206,9 @@ func (s *cpsession) ReportNodeCapabilities(
 			Epoch: epoch,
 		},
 		Actions: &protocol.NodeActionCapabilities{
-			KvPut:    capabilities.Actions.KVPut,
-			KvGet:    capabilities.Actions.KVGet,
-			KvDelete: capabilities.Actions.KVDelete,
+			KvPut:    capabilities.KVPut,
+			KvGet:    capabilities.KVGet,
+			KvDelete: capabilities.KVDelete,
 		},
 		ReportedAt: time.Now().UnixMilli(),
 	})

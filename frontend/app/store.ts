@@ -84,6 +84,7 @@ interface ClusterStore {
   handleSetDelay: (clusterId: string, nodeId: string, delayMs: number) => Promise<boolean>;
   handleSetPartition: (clusterId: string, nodeId: string, peerId: string, enabled: boolean) => Promise<boolean>;
   toggleTimers: () => void;
+  toggleControlPlane: () => void;
   getNodeStatus: (node: NodeInfo) => "active" | "crashed";
 
   toggleSimulation: () => void;
@@ -111,6 +112,7 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
   localStatuses: {},
   selectedClusterId: null,
   showTimers: false,
+  showControlPlane: true,
 
   isSimulationRunning: true, // Start running by default
   isPaused: false,
@@ -412,6 +414,7 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
   },
 
   toggleTimers: () => set((state) => ({ showTimers: !state.showTimers })),
+  toggleControlPlane: () => set((state) => ({ showControlPlane: !state.showControlPlane })),
 
   toggleSimulation: () => {
     const running = !get().isSimulationRunning;
@@ -489,7 +492,7 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
             const { localStatuses, clusters } = get();
             if (sourceId !== "CP") {
               const cluster = clusters.find(c => c.id === clusterId);
-              const sourceNode = cluster?.nodes.find(n => n.id === sourceId);
+              const sourceNode = cluster?.nodes?.find(n => n.id === sourceId);
               const sourceStatus = localStatuses[sourceId] || sourceNode?.status || "active";
               
               if (sourceStatus === "crashed") {

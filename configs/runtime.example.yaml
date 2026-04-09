@@ -1,0 +1,28 @@
+controlplane:
+  enabled: true
+  port: 9000
+  node_cleanup_timeout: 10s
+
+actor:
+  project_root: .
+  default_cp_host: localhost
+  default_cp_port: 9000
+  node_binary_path: bin/node
+
+nodes:
+  - id: node1
+    port: 7001
+    cluster_id: c1
+    host: localhost
+    peers: "node2:7002"
+  - id: node2
+    port: 7002
+    cluster_id: c1
+    host: localhost
+    peers: "node1:7001"
+
+bootstrap:
+  commands:
+    - "cp new-cluster c1"
+    - "start-node node1 7001 --cluster-id c1 --host localhost --peers node2:7002 --cp-host localhost --cp-port 9000"
+    - "start-node node2 7002 --cluster-id c1 --host localhost --peers node1:7001 --cp-host localhost --cp-port 9000"
