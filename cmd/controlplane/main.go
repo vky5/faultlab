@@ -31,6 +31,8 @@ func main() {
 	configPath := flag.String("config", "", "path to runtime yaml config")
 	port := flag.Int("port", 9000, "control plane gRPC port")
 	httpPort := flag.Int("http-port", 8080, "control plane HTTP port")
+	commandPort := flag.Int("command-port", 9091, "control plane command ingestion HTTP port")
+	commandAuthToken := flag.String("command-auth-token", "", "optional bearer token for command ingestion API")
 	heartbeatTimeout := flag.Duration(
 		"heartbeat-timeout",
 		5*time.Second,
@@ -57,6 +59,8 @@ func main() {
 
 	cpCfg := &controlplane.ControlPlane{
 		Port:               *port,
+		CommandPort:        *commandPort,
+		CommandAuthToken:   *commandAuthToken,
 		NodeCleanupTimeout: *heartbeatTimeout,
 		ProjectRoot:        runtimeCfg.Actor.ProjectRoot,
 		DefaultCPHost:      runtimeCfg.Actor.DefaultCPHost,
@@ -67,7 +71,13 @@ func main() {
 
 	if *configPath != "" {
 		cpCfg.Port = runtimeCfg.ControlPlane.Port
+		cpCfg.CommandPort = runtimeCfg.ControlPlane.CommandPort
+		cpCfg.CommandAuthToken = runtimeCfg.ControlPlane.CommandAuthToken
 		cpCfg.NodeCleanupTimeout = cpTimeout
+	}
+
+	if *commandAuthToken != "" {
+		cpCfg.CommandAuthToken = *commandAuthToken
 	}
 
 	// ---- core components ----
@@ -126,6 +136,11 @@ func main() {
 		}
 	}()
 
+	commandServer := controlplane.StartCommandListener(actor, controlplane.CommandListenerConfig{
+		Port:      cpCfg.CommandPort,
+		AuthToken: cpCfg.CommandAuthToken,
+	})
+
 	for _, n := range runtimeCfg.Nodes {
 		if n.ID == "" || n.Port <= 0 {
 			log.Printf("skipping invalid node config: id=%q port=%d", n.ID, n.Port)
@@ -141,37 +156,24 @@ func main() {
 			normalizeDefault(n.CPHost, cpCfg.DefaultCPHost),
 			normalizeDefaultInt(n.CPPort, cpCfg.DefaultCPPort),
 		)
-		if err := dispatchRuntimeCommand(raw, actor); err != nil {
+		if err := controlplane.DispatchRuntimeCommand(raw, actor); err != nil {
 			log.Printf("node bootstrap failed for %s: %v", n.ID, err)
 		}
 	}
 
 	for _, raw := range runtimeCfg.Bootstrap.Commands {
-		if err := dispatchRuntimeCommand(raw, actor); err != nil {
+		if err := controlplane.DispatchRuntimeCommand(raw, actor); err != nil {
 			log.Printf("bootstrap command failed (%q): %v", raw, err)
 		}
 	}
 
 	// ---- CLI command loop ----
 	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Println("control plane ready for commands")
-	fmt.Println("Commands:")
-	fmt.Println("  new-cluster <cluster-id> [--protocol <gossip|raft>] (default: gossip)")
-	fmt.Println("  add-node <cluster-id> <node-id> <host> <port>")
-	fmt.Println("  remove-node <cluster-id> <node-id>")
-	fmt.Println("  list-nodes <cluster-id>")
-	fmt.Println("  list-clusters")
-	fmt.Println("  set-protocol <cluster-id> <gossip|raft>")
-	fmt.Println("  start-node <node-id> <port> [--cluster-id <id>] [--host <host>] [--peers <csv>] [--cp-host <host>] [--cp-port <port>]")
-	fmt.Println("  stop-node <node-id>")
-	fmt.Println("  list-node-procs")
-	fmt.Println("  kv-put <cluster-id> <node-id> <key> <value>")
-	fmt.Println("  kv-get <cluster-id> <node-id> <key>")
-	fmt.Println("  set-fault <cluster-id> <node-id> <crashed:true|false> <drop-rate:0..1> <delay-ms:int> [partition-csv]")
-	fmt.Println("  help")
+	fmt.Println("control plane ready")
+	fmt.Println("use cpcli for interactive help and command execution")
 	go func() {
 		for scanner.Scan() {
-			if err := dispatchRuntimeCommand(scanner.Text(), actor); err != nil {
+			if err := controlplane.DispatchRuntimeCommand(scanner.Text(), actor); err != nil {
 				fmt.Println("command error:", err)
 			}
 		}
@@ -186,43 +188,10 @@ func main() {
 	defer cancel()
 
 	_ = httpServer.Shutdown(shutdownCtx)
+	if commandServer != nil {
+		_ = commandServer.Shutdown(shutdownCtx)
+	}
 	grpcServer.GracefulStop()
-}
-
-func dispatchRuntimeCommand(raw string, actor *controlplane.Actor) error {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return nil
-	}
-
-	parts := strings.Fields(trimmed)
-	if len(parts) > 0 && parts[0] == "cp" {
-		remainder := strings.TrimSpace(strings.TrimPrefix(trimmed, parts[0]))
-		if remainder == "" {
-			return fmt.Errorf("usage: cp <controlplane-command...>")
-		}
-		trimmed = remainder
-	}
-
-	cmd, err := controlplane.Parse(trimmed)
-	if err != nil {
-		return err
-	}
-
-	actor.Submit(cmd)
-
-	res, err := cmd.MapWait()
-	if err != nil {
-		return err
-	}
-
-	if res != nil {
-		fmt.Printf("result: %+v\n", res)
-	} else {
-		fmt.Println("ok")
-	}
-
-	return nil
 }
 
 func normalizeDefault(value string, fallback string) string {

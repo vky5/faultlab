@@ -13,6 +13,8 @@ type RuntimeConfig struct {
 		Enabled            bool   `yaml:"enabled"`
 		Port               int    `yaml:"port"`
 		NodeCleanupTimeout string `yaml:"node_cleanup_timeout"`
+		CommandPort        int    `yaml:"command_port"`
+		CommandAuthToken   string `yaml:"command_auth_token"`
 	} `yaml:"controlplane"`
 
 	Actor struct {
@@ -45,6 +47,7 @@ func DefaultRuntimeConfig() RuntimeConfig {
 	cfg.ControlPlane.Enabled = true
 	cfg.ControlPlane.Port = 9000
 	cfg.ControlPlane.NodeCleanupTimeout = "10s"
+	cfg.ControlPlane.CommandPort = 9091
 
 	cfg.Actor.ProjectRoot = "."
 	cfg.Actor.DefaultCPHost = "localhost"
@@ -81,4 +84,3 @@ func (c RuntimeConfig) ControlPlaneTimeout() (time.Duration, error) {
 
 	return d, nil
 }
-

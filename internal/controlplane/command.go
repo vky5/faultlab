@@ -5,6 +5,8 @@ type CommandType int
 const (
 	CmdCreateCluster CommandType = iota
 	CmdStartNodeProcess
+	CmdStopNodeProcess
+	CmdListNodeProcesses
 	CmdAddNode
 	CmdRemoveNode
 	CmdListNodes

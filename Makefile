@@ -1,7 +1,8 @@
-.PHONY: node1 node2 node3 node4 node5 node6 node7 node8 node9 node10 controlplane cluster test-nodes stop config-node1 config-node2 config-node3 config-node4 config-node5 config-node6 config-node7 config-node8 config-node9 config-node10 proto proto-all
+.PHONY: node1 node2 node3 node4 node5 node6 node7 node8 node9 node10 controlplane cpcli cpcli-interactive cluster test-nodes stop config-node1 config-node2 config-node3 config-node4 config-node5 config-node6 config-node7 config-node8 config-node9 config-node10 proto proto-all
 
 NODE_CMD := go run ./cmd/node
 CP_CMD := go run ./cmd/controlplane
+CPCLI_CMD := go run ./cmd/cpcli
 CLUSTER_ID := c1
 CONFIG_FILE := node.runtime.ini
 Frontend_DIR := ./frontend
@@ -10,6 +11,19 @@ PROTO_DIR := internal/protocol
 # Start control plane
 controlplane:
 	$(CP_CMD) -port 9000
+
+# Start cpcli in one-shot mode.
+# Usage: make cpcli CMD="list-clusters"
+cpcli:
+	@if [ -z "$(CMD)" ]; then \
+		echo "Usage: make cpcli CMD=\"<controlplane-command>\""; \
+		exit 1; \
+	fi
+	$(CPCLI_CMD) --host localhost --port 9091 $(CMD)
+
+# Start cpcli in interactive mode (continuous input)
+cpcli-interactive:
+	$(CPCLI_CMD) --interactive --host localhost --port 9091
 
 # Start nodes (run in separate terminals)
 node1:

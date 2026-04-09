@@ -2,6 +2,8 @@ controlplane:
   enabled: true
   port: 9000
   node_cleanup_timeout: 10s
+  command_port: 9091
+  command_auth_token: ""
 
 actor:
   project_root: .

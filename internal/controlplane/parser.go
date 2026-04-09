@@ -79,6 +79,18 @@ func Parse(input string) (Command, error) {
 
 		return cmd, nil
 
+	case "stop-node":
+		if len(parts) < 2 {
+			return Command{}, fmt.Errorf("usage: stop-node <node-id>")
+		}
+		cmd := NewCommand(CmdStopNodeProcess)
+		cmd.NodeID = parts[1]
+		return cmd, nil
+
+	case "list-node-procs":
+		cmd := NewCommand(CmdListNodeProcesses)
+		return cmd, nil
+
 	case "new-cluster":
 		if len(parts) < 2 {
 			return Command{}, fmt.Errorf("usage: new-cluster <cluster-id> [--protocol <gossip|raft>]")

@@ -8,6 +8,8 @@ import (
 type ControlPlane struct {
 	NodeCleanupTimeout time.Duration
 	Port               int
+	CommandPort        int
+	CommandAuthToken   string
 	ProjectRoot        string
 	DefaultCPHost      string
 	DefaultCPPort      int

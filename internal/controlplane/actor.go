@@ -102,6 +102,41 @@ func (a *Actor) Run() {
 				err := a.startNodeProcess(cmd)
 				cmd.Reply(map[string]any{"started": err == nil, "nodeId": cmd.NodeID}, err)
 
+			case CmdStopNodeProcess:
+				a.mu.Lock()
+				proc, ok := a.nodeProcs[cmd.NodeID]
+				a.mu.Unlock()
+				if !ok {
+					cmd.Reply(nil, fmt.Errorf("node process not running: %s", cmd.NodeID))
+					continue
+				}
+
+				if proc.Process == nil {
+					cmd.Reply(nil, fmt.Errorf("node process has no process handle: %s", cmd.NodeID))
+					continue
+				}
+
+				if err := proc.Process.Kill(); err != nil {
+					cmd.Reply(nil, fmt.Errorf("failed to stop node process %s: %w", cmd.NodeID, err))
+					continue
+				}
+
+				cmd.Reply(map[string]any{"stopped": true, "nodeId": cmd.NodeID}, nil)
+
+			case CmdListNodeProcesses:
+				a.mu.Lock()
+				procs := make([]managedNodeProcess, 0, len(a.nodeProcs))
+				for nodeID, proc := range a.nodeProcs {
+					pid := 0
+					if proc != nil && proc.Process != nil {
+						pid = proc.Process.Pid
+					}
+					procs = append(procs, managedNodeProcess{NodeID: nodeID, PID: pid})
+				}
+				a.mu.Unlock()
+
+				cmd.Reply(procs, nil)
+
 			case CmdAddNode:
 				// Run Verification + Registration
 				err := a.service.RegisterNode(a.ctx, cmd.ClusterID, cmd.NodeID, cmd.Host, cmd.Port)
@@ -329,6 +364,8 @@ func (a *Actor) Run() {
 			case CmdHelp:
 				help := []string{
 					"start-node <node-id> <port> [--cluster-id <id>] [--host <host>] [--peers <csv>] [--cp-host <host>] [--cp-port <port>]",
+					"stop-node <node-id>",
+					"list-node-procs",
 					"new-cluster <cluster-id> [--protocol <gossip|raft>] (default: gossip)",
 					"add-node <cluster-id> <node-id> <host> <port>",
 					"remove-node <cluster-id> <node-id>",
