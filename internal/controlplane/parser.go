@@ -19,6 +19,66 @@ func Parse(input string) (Command, error) {
 		cmd := NewCommand(CmdHelp)
 		return cmd, nil
 
+	case "start-node":
+		if len(parts) < 3 {
+			return Command{}, fmt.Errorf("usage: start-node <node-id> <port> [--cluster-id <id>] [--host <host>] [--peers <csv>] [--cp-host <host>] [--cp-port <port>]")
+		}
+
+		port, err := strconv.Atoi(parts[2])
+		if err != nil {
+			return Command{}, fmt.Errorf("invalid port: %v", err)
+		}
+
+		cmd := NewCommand(CmdStartNodeProcess)
+		cmd.NodeID = parts[1]
+		cmd.Port = port
+		cmd.ClusterID = "default"
+		cmd.Host = "localhost"
+
+		for i := 3; i < len(parts); i++ {
+			arg := parts[i]
+			switch arg {
+			case "--cluster-id":
+				if i+1 >= len(parts) {
+					return Command{}, fmt.Errorf("missing value for --cluster-id")
+				}
+				cmd.ClusterID = parts[i+1]
+				i++
+			case "--host":
+				if i+1 >= len(parts) {
+					return Command{}, fmt.Errorf("missing value for --host")
+				}
+				cmd.Host = parts[i+1]
+				i++
+			case "--peers":
+				if i+1 >= len(parts) {
+					return Command{}, fmt.Errorf("missing value for --peers")
+				}
+				cmd.PeersCSV = parts[i+1]
+				i++
+			case "--cp-host":
+				if i+1 >= len(parts) {
+					return Command{}, fmt.Errorf("missing value for --cp-host")
+				}
+				cmd.CPHost = parts[i+1]
+				i++
+			case "--cp-port":
+				if i+1 >= len(parts) {
+					return Command{}, fmt.Errorf("missing value for --cp-port")
+				}
+				cpPort, err := strconv.Atoi(parts[i+1])
+				if err != nil {
+					return Command{}, fmt.Errorf("invalid --cp-port: %v", err)
+				}
+				cmd.CPPort = cpPort
+				i++
+			default:
+				return Command{}, fmt.Errorf("unknown option for start-node: %s", arg)
+			}
+		}
+
+		return cmd, nil
+
 	case "new-cluster":
 		if len(parts) < 2 {
 			return Command{}, fmt.Errorf("usage: new-cluster <cluster-id> [--protocol <gossip|raft>]")

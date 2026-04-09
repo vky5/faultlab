@@ -4,6 +4,7 @@ type CommandType int
 
 const (
 	CmdCreateCluster CommandType = iota
+	CmdStartNodeProcess
 	CmdAddNode
 	CmdRemoveNode
 	CmdListNodes
@@ -26,21 +27,25 @@ type CommandResult struct {
 }
 
 type Command struct {
-	Type      CommandType
-	ClusterID string
-	Protocol  string
-	NodeID    string
-	Key       string
-	Value     string
-	Host      string
-	Port      int
-	Crashed   bool
-	DropRate  float64
-	DelayMs   int
-	Partition []string
-	PeerID    string
-	Enabled   bool
-	replyCh   chan CommandResult
+	Type        CommandType
+	ClusterID   string
+	Protocol    string
+	NodeID      string
+	Key         string
+	Value       string
+	Host        string
+	Port        int
+	Crashed     bool
+	DropRate    float64
+	DelayMs     int
+	Partition   []string
+	PeerID      string
+	PeersCSV    string
+	Enabled     bool
+	ProjectRoot string
+	CPHost      string
+	CPPort      int
+	replyCh     chan CommandResult
 }
 
 // Init command with a reply channel

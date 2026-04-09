@@ -4,6 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
 
 	"github.com/vky5/faultlab/internal/cluster"
 	clustermanager "github.com/vky5/faultlab/internal/cluster/manager"
@@ -11,24 +16,41 @@ import (
 	pb "github.com/vky5/faultlab/internal/protocol"
 )
 
+type ActorOptions struct {
+	ProjectRoot    string
+	DefaultCPHost  string
+	DefaultCPPort  int
+	NodeBinaryPath string
+}
+
+type managedNodeProcess struct {
+	NodeID string `json:"nodeId"`
+	PID    int    `json:"pid"`
+}
+
 type Actor struct {
-	manager *clustermanager.Manager
-	service *controlplanesvc.Service
-	cmdCh   chan Command
-	ctx     context.Context
-	cancel  context.CancelFunc
+	manager   *clustermanager.Manager
+	service   *controlplanesvc.Service
+	options   ActorOptions
+	cmdCh     chan Command
+	ctx       context.Context
+	cancel    context.CancelFunc
+	mu        sync.Mutex
+	nodeProcs map[string]*exec.Cmd
 }
 
 // Need service for node verification registration
-func NewActor(manager *clustermanager.Manager, service *controlplanesvc.Service) *Actor {
+func NewActor(manager *clustermanager.Manager, service *controlplanesvc.Service, options ActorOptions) *Actor {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Actor{
-		manager: manager,
-		service: service,
-		cmdCh:   make(chan Command, 32),
-		ctx:     ctx,
-		cancel:  cancel,
+		manager:   manager,
+		service:   service,
+		options:   options,
+		cmdCh:     make(chan Command, 32),
+		ctx:       ctx,
+		cancel:    cancel,
+		nodeProcs: make(map[string]*exec.Cmd),
 	}
 }
 
@@ -75,6 +97,10 @@ func (a *Actor) Run() {
 				}
 				fmt.Println("cluster created:", cmd.ClusterID)
 				cmd.Reply(nil, nil)
+
+			case CmdStartNodeProcess:
+				err := a.startNodeProcess(cmd)
+				cmd.Reply(map[string]any{"started": err == nil, "nodeId": cmd.NodeID}, err)
 
 			case CmdAddNode:
 				// Run Verification + Registration
@@ -302,6 +328,7 @@ func (a *Actor) Run() {
 
 			case CmdHelp:
 				help := []string{
+					"start-node <node-id> <port> [--cluster-id <id>] [--host <host>] [--peers <csv>] [--cp-host <host>] [--cp-port <port>]",
 					"new-cluster <cluster-id> [--protocol <gossip|raft>] (default: gossip)",
 					"add-node <cluster-id> <node-id> <host> <port>",
 					"remove-node <cluster-id> <node-id>",
@@ -322,6 +349,107 @@ func (a *Actor) Run() {
 			}
 		}
 	}
+
+}
+
+func (a *Actor) startNodeProcess(cmd Command) error {
+	a.mu.Lock()
+	if _, exists := a.nodeProcs[cmd.NodeID]; exists {
+		a.mu.Unlock()
+		return fmt.Errorf("node process already running: %s", cmd.NodeID)
+	}
+	a.mu.Unlock()
+
+	projectRoot := cmd.ProjectRoot
+	if projectRoot == "" {
+		projectRoot = a.options.ProjectRoot
+	}
+	if projectRoot == "" {
+		projectRoot = "."
+	}
+	cpHost := cmd.CPHost
+	if cpHost == "" {
+		cpHost = a.options.DefaultCPHost
+	}
+	if cpHost == "" {
+		cpHost = "localhost"
+	}
+	cpPort := cmd.CPPort
+	if cpPort == 0 {
+		cpPort = a.options.DefaultCPPort
+	}
+	if cpPort == 0 {
+		cpPort = 9000
+	}
+
+	clusterID := cmd.ClusterID
+	if clusterID == "" {
+		clusterID = "default"
+	}
+	host := cmd.Host
+	if host == "" {
+		host = "localhost"
+	}
+
+	nodeArgs := []string{
+		"-id", cmd.NodeID,
+		"-port", fmt.Sprintf("%d", cmd.Port),
+		"-cluster-id", clusterID,
+		"-host", host,
+		"-cp-host", cpHost,
+		"-cp-port", fmt.Sprintf("%d", cpPort),
+	}
+	if cmd.PeersCSV != "" {
+		nodeArgs = append(nodeArgs, "-peers", cmd.PeersCSV)
+	}
+
+	proc := a.newNodeProcess(projectRoot, nodeArgs)
+	proc.Dir = projectRoot
+	proc.Stdout = os.Stdout
+	proc.Stderr = os.Stderr
+
+	if err := proc.Start(); err != nil {
+		return fmt.Errorf("failed to start node process %s: %w", cmd.NodeID, err)
+	}
+
+	a.mu.Lock()
+	a.nodeProcs[cmd.NodeID] = proc
+	a.mu.Unlock()
+
+	go func() {
+		if err := proc.Wait(); err != nil {
+			log.Printf("node process %s exited with error: %v", cmd.NodeID, err)
+		}
+		a.mu.Lock()
+		delete(a.nodeProcs, cmd.NodeID)
+		a.mu.Unlock()
+	}()
+
+	log.Printf("controlplane actor started node process %s with pid %d", cmd.NodeID, proc.Process.Pid)
+	return nil
+}
+
+func (a *Actor) newNodeProcess(projectRoot string, nodeArgs []string) *exec.Cmd {
+	binaryPath := a.options.NodeBinaryPath
+	if strings.TrimSpace(binaryPath) == "" {
+		binaryPath = "bin/node"
+	}
+
+	if !filepath.IsAbs(binaryPath) {
+		binaryPath = filepath.Join(projectRoot, binaryPath)
+	}
+
+	if info, err := os.Stat(binaryPath); err == nil && !info.IsDir() {
+		if info.Mode()&0o111 != 0 {
+			return exec.CommandContext(a.ctx, binaryPath, nodeArgs...)
+		}
+		log.Printf("node binary exists but is not executable: %s; falling back to go run", binaryPath)
+	} else {
+		log.Printf("node binary not found at %s; falling back to go run", binaryPath)
+	}
+
+	goArgs := append([]string{"run", "./cmd/node"}, nodeArgs...)
+	return exec.CommandContext(a.ctx, "go", goArgs...)
 }
 
 /*
