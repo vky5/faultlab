@@ -95,6 +95,7 @@ func printHelp() {
 	fmt.Println("")
 	fmt.Println(clrBold + "Cluster commands" + clrReset)
 	fmt.Println("  new-cluster <cluster-id> [--protocol <gossip|raft>]")
+	fmt.Println("  kill-cluster <cluster-id>")
 	fmt.Println("  list-clusters")
 	fmt.Println("  set-protocol <cluster-id> <gossip|raft>")
 	fmt.Println("")
@@ -117,6 +118,9 @@ func printHelp() {
 	fmt.Println(clrBold + "KV commands" + clrReset)
 	fmt.Println("  kv-put <cluster-id> <node-id> <key> <value>")
 	fmt.Println("  kv-get <cluster-id> <node-id> <key>")
+	fmt.Println("")
+	fmt.Println(clrBold + "Experiment commands" + clrReset)
+	fmt.Println("  run-hypothesis <relative-experiment-path>")
 }
 
 func sendCommand(host string, port int, token string, timeout time.Duration, command string) error {

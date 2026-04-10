@@ -44,12 +44,6 @@ func (m *Manager) RemoveCluster(clusterID string) error {
 		return fmt.Errorf("cluster does not exist")
 	}
 
-	if nodes, err := m.GetNodes(clusterID); err == nil {
-		for _, node := range nodes {
-			m.RemoveNode(clusterID, node.ID)
-		}
-	}
-
 	delete(m.clusters, clusterID)
 	return nil
 }
@@ -82,12 +76,12 @@ func (m *Manager) GetCluster(clusterID string) (*cluster.Cluster, error) {
 func (m *Manager) SwapProtocol(clusterID, protocol string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	protocol = strings.ToLower(strings.TrimSpace(protocol))
 	if protocol == "" {
 		protocol = "gossip"
 	}
-	
+
 	switch protocol {
 	case "gossip", "raft":
 	default:

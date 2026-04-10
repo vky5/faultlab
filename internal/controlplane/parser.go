@@ -287,6 +287,22 @@ func Parse(input string) (Command, error) {
 		cmd.ClusterID = parts[1]
 		cmd.Protocol = parts[2]
 		return cmd, nil
+
+	case "run-hypothesis", "run-experiment":
+		if len(parts) < 2 {
+			return Command{}, fmt.Errorf("usage: run-hypothesis <relative-experiment-path>")
+		}
+		cmd := NewCommand(CmdRunHypothesis)
+		cmd.FilePath = parts[1]
+		return cmd, nil
+
+	case "kill-cluster", "stop-cluster":
+		if len(parts) < 2 {
+			return Command{}, fmt.Errorf("usage: kill-cluster <cluster-id>")
+		}
+		cmd := NewCommand(CmdKillCluster)
+		cmd.ClusterID = parts[1]
+		return cmd, nil
 	}
 
 	return Command{}, fmt.Errorf("unknown command")

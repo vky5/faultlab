@@ -52,6 +52,7 @@ enum ActionType {
 
   KV_PUT = 1;
   KV_GET = 2;
+  KV_DELETE = 3;
 }
 
 // structure of payload for kv.put and kv.get
@@ -66,6 +67,10 @@ message KVGetRequest {
 
 message KVGetResponse {
   string value = 1;
+}
+
+message KVDeleteRequest {
+  string key = 1;
 }
 
 message EnvelopeRequest {

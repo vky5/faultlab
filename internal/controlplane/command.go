@@ -20,6 +20,8 @@ const (
 	CmdKVPut
 	CmdKVGet
 	CmdSetClusterProtocol
+	CmdRunHypothesis
+	CmdKillCluster
 	CmdHelp
 )
 
@@ -44,6 +46,7 @@ type Command struct {
 	PeerID      string
 	PeersCSV    string
 	Enabled     bool
+	FilePath    string
 	ProjectRoot string
 	CPHost      string
 	CPPort      int

@@ -1,0 +1,49 @@
+name: partition_conflict
+
+cluster:
+  id: conflict_cluster
+  members:
+    - id: node1
+      port: 7001
+    - id: node2
+      port: 7002
+    - id: node3
+      port: 7003
+    - id: node4
+      port: 7004
+    - id: node5
+      port: 7005
+
+timeline:
+  - at: 0s
+    action: start_cluster
+
+  - at: 5s
+    action: partition
+    groups:
+      - [1, 2]
+      - [3, 4, 5]
+
+  - at: 6s
+    action: write
+    key: x
+    value: 1
+    target: group1
+    groups:
+      - [1, 2]
+      - [3, 4, 5]
+
+  - at: 6s
+    action: write
+    key: x
+    value: 2
+    target: group2
+    groups:
+      - [1, 2]
+      - [3, 4, 5]
+
+  - at: 15s
+    action: heal_partition
+    groups:
+      - [1, 2]
+      - [3, 4, 5]

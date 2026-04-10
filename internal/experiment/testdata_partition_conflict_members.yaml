@@ -1,0 +1,36 @@
+name: partition_conflict_members
+
+cluster:
+  id: conflict_members_cluster
+  members:
+    - id: alpha
+      port: 8101
+    - id: beta
+      port: 8102
+    - id: gamma
+      port: 8103
+
+timeline:
+  - at: 0s
+    action: start_cluster
+
+  - at: 5s
+    action: partition
+    groups:
+      - [1]
+      - [2, 3]
+
+  - at: 6s
+    action: write
+    key: x
+    value: 1
+    target: group1
+    groups:
+      - [1]
+      - [2, 3]
+
+  - at: 8s
+    action: heal_partition
+    groups:
+      - [1]
+      - [2, 3]

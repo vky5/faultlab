@@ -9,10 +9,13 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	"github.com/vky5/faultlab/internal/cluster"
 	clustermanager "github.com/vky5/faultlab/internal/cluster/manager"
 	controlplanesvc "github.com/vky5/faultlab/internal/controlplane/service"
+	"github.com/vky5/faultlab/internal/experiment"
 	pb "github.com/vky5/faultlab/internal/protocol"
 )
 
@@ -24,8 +27,9 @@ type ActorOptions struct {
 }
 
 type managedNodeProcess struct {
-	NodeID string `json:"nodeId"`
-	PID    int    `json:"pid"`
+	NodeID    string `json:"nodeId"`
+	ClusterID string `json:"clusterId"`
+	PID       int    `json:"pid"`
 }
 
 type Actor struct {
@@ -37,6 +41,7 @@ type Actor struct {
 	cancel    context.CancelFunc
 	mu        sync.Mutex
 	nodeProcs map[string]*exec.Cmd
+	nodeMeta  map[string]string
 }
 
 // Need service for node verification registration
@@ -51,6 +56,7 @@ func NewActor(manager *clustermanager.Manager, service *controlplanesvc.Service,
 		ctx:       ctx,
 		cancel:    cancel,
 		nodeProcs: make(map[string]*exec.Cmd),
+		nodeMeta:  make(map[string]string),
 	}
 }
 
@@ -65,9 +71,40 @@ func (a *Actor) Submit(cmd Command) {
 
 // Stop cancels actor processing and causes Run() to exit.
 func (a *Actor) Stop() {
+	a.stopAllManagedNodeProcesses()
 	if a.cancel != nil {
 		a.cancel()
 	}
+}
+
+func (a *Actor) stopAllManagedNodeProcesses() {
+	type processRef struct {
+		nodeID string
+		proc   *exec.Cmd
+	}
+
+	a.mu.Lock()
+	procs := make([]processRef, 0, len(a.nodeProcs))
+	for nodeID, proc := range a.nodeProcs {
+		procs = append(procs, processRef{nodeID: nodeID, proc: proc})
+	}
+	a.mu.Unlock()
+
+	for _, p := range procs {
+		if p.proc == nil || p.proc.Process == nil {
+			continue
+		}
+		if err := killProcessTree(p.proc); err != nil {
+			log.Printf("failed stopping managed node process during actor stop: node=%s err=%v", p.nodeID, err)
+		}
+	}
+
+	a.mu.Lock()
+	for _, p := range procs {
+		delete(a.nodeProcs, p.nodeID)
+		delete(a.nodeMeta, p.nodeID)
+	}
+	a.mu.Unlock()
 }
 
 // Bridges directly to the service for SSE log streaming (does not use command actor channel loop)
@@ -116,10 +153,15 @@ func (a *Actor) Run() {
 					continue
 				}
 
-				if err := proc.Process.Kill(); err != nil {
+				if err := killProcessTree(proc); err != nil {
 					cmd.Reply(nil, fmt.Errorf("failed to stop node process %s: %w", cmd.NodeID, err))
 					continue
 				}
+
+				a.mu.Lock()
+				delete(a.nodeProcs, cmd.NodeID)
+				delete(a.nodeMeta, cmd.NodeID)
+				a.mu.Unlock()
 
 				cmd.Reply(map[string]any{"stopped": true, "nodeId": cmd.NodeID}, nil)
 
@@ -131,7 +173,7 @@ func (a *Actor) Run() {
 					if proc != nil && proc.Process != nil {
 						pid = proc.Process.Pid
 					}
-					procs = append(procs, managedNodeProcess{NodeID: nodeID, PID: pid})
+					procs = append(procs, managedNodeProcess{NodeID: nodeID, ClusterID: a.nodeMeta[nodeID], PID: pid})
 				}
 				a.mu.Unlock()
 
@@ -361,6 +403,22 @@ func (a *Actor) Run() {
 				}
 				cmd.Reply(map[string]any{"status": "ok"}, nil)
 
+			case CmdKillCluster:
+				stopped, err := a.killCluster(cmd.ClusterID)
+				if err != nil {
+					cmd.Reply(nil, err)
+					continue
+				}
+				cmd.Reply(map[string]any{"status": "ok", "clusterId": cmd.ClusterID, "stoppedNodeProcesses": stopped}, nil)
+
+			case CmdRunHypothesis:
+				started, err := a.runHypothesis(cmd)
+				if err != nil {
+					cmd.Reply(nil, err)
+					continue
+				}
+				cmd.Reply(started, nil)
+
 			case CmdHelp:
 				help := []string{
 					"start-node <node-id> <port> [--cluster-id <id>] [--host <host>] [--peers <csv>] [--cp-host <host>] [--cp-port <port>]",
@@ -372,8 +430,10 @@ func (a *Actor) Run() {
 					"list-nodes <cluster-id>",
 					"list-clusters",
 					"set-protocol <cluster-id> <gossip|raft>",
+					"kill-cluster <cluster-id>",
 					"kv-put <cluster-id> <node-id> <key> <value>",
 					"kv-get <cluster-id> <node-id> <key>",
+					"run-hypothesis <relative-experiment-path>",
 					"set-fault <cluster-id> <node-id> <crashed:true|false> <drop-rate:0..1> <delay-ms:int> [partition-csv]",
 					"fault-crash <cluster-id> <node-id>",
 					"fault-recover <cluster-id> <node-id>",
@@ -441,6 +501,7 @@ func (a *Actor) startNodeProcess(cmd Command) error {
 	}
 
 	proc := a.newNodeProcess(projectRoot, nodeArgs)
+	proc.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	proc.Dir = projectRoot
 	proc.Stdout = os.Stdout
 	proc.Stderr = os.Stderr
@@ -451,6 +512,7 @@ func (a *Actor) startNodeProcess(cmd Command) error {
 
 	a.mu.Lock()
 	a.nodeProcs[cmd.NodeID] = proc
+	a.nodeMeta[cmd.NodeID] = clusterID
 	a.mu.Unlock()
 
 	go func() {
@@ -459,6 +521,7 @@ func (a *Actor) startNodeProcess(cmd Command) error {
 		}
 		a.mu.Lock()
 		delete(a.nodeProcs, cmd.NodeID)
+		delete(a.nodeMeta, cmd.NodeID)
 		a.mu.Unlock()
 	}()
 
@@ -487,6 +550,153 @@ func (a *Actor) newNodeProcess(projectRoot string, nodeArgs []string) *exec.Cmd 
 
 	goArgs := append([]string{"run", "./cmd/node"}, nodeArgs...)
 	return exec.CommandContext(a.ctx, "go", goArgs...)
+}
+
+func (a *Actor) killCluster(clusterID string) (int, error) {
+	clusterID = strings.TrimSpace(clusterID)
+	if clusterID == "" {
+		return 0, fmt.Errorf("cluster id is required")
+	}
+
+	type processRef struct {
+		nodeID string
+		proc   *exec.Cmd
+	}
+
+	a.mu.Lock()
+	toKill := make([]processRef, 0)
+	for nodeID, proc := range a.nodeProcs {
+		if a.nodeMeta[nodeID] != clusterID {
+			continue
+		}
+		toKill = append(toKill, processRef{nodeID: nodeID, proc: proc})
+	}
+	a.mu.Unlock()
+
+	stopped := 0
+	for _, item := range toKill {
+		if item.proc == nil || item.proc.Process == nil {
+			continue
+		}
+		if err := killProcessTree(item.proc); err != nil {
+			return stopped, fmt.Errorf("failed to stop node process %s: %w", item.nodeID, err)
+		}
+		stopped++
+	}
+
+	a.mu.Lock()
+	for _, item := range toKill {
+		delete(a.nodeProcs, item.nodeID)
+		delete(a.nodeMeta, item.nodeID)
+	}
+	a.mu.Unlock()
+
+	if _, err := a.manager.GetCluster(clusterID); err == nil {
+		if err := a.manager.RemoveCluster(clusterID); err != nil {
+			return stopped, err
+		}
+	}
+
+	if stopped == 0 {
+		return 0, fmt.Errorf("no managed node processes found for cluster %s", clusterID)
+	}
+
+	return stopped, nil
+}
+
+func (a *Actor) runHypothesis(cmd Command) (map[string]any, error) {
+	relOrAbsPath := strings.TrimSpace(cmd.FilePath)
+	if relOrAbsPath == "" {
+		return nil, fmt.Errorf("hypothesis file path is required")
+	}
+
+	projectRoot := strings.TrimSpace(cmd.ProjectRoot)
+	if projectRoot == "" {
+		projectRoot = strings.TrimSpace(a.options.ProjectRoot)
+	}
+	if projectRoot == "" {
+		projectRoot = "."
+	}
+
+	absPath := relOrAbsPath
+	if !filepath.IsAbs(absPath) {
+		absPath = filepath.Join(projectRoot, relOrAbsPath)
+	}
+
+	exp, err := experiment.LoadFile(absPath)
+	if err != nil {
+		return nil, fmt.Errorf("load hypothesis: %w", err)
+	}
+	clusterID := strings.TrimSpace(exp.Cluster.ID)
+	if clusterID == "" {
+		return nil, fmt.Errorf("cluster.id is required in hypothesis yaml")
+	}
+
+	compileOpts := experiment.CompileOptions{
+		ClusterID:        clusterID,
+		ControlPlaneHost: a.options.DefaultCPHost,
+		ControlPlanePort: a.options.DefaultCPPort,
+	}
+	batches, err := exp.Compile(compileOpts)
+	if err != nil {
+		return nil, fmt.Errorf("compile hypothesis: %w", err)
+	}
+
+	go a.executeHypothesis(exp.Name, clusterID, absPath, batches)
+
+	return map[string]any{
+		"status":       "started",
+		"name":         exp.Name,
+		"clusterId":    clusterID,
+		"path":         relOrAbsPath,
+		"resolvedPath": absPath,
+		"steps":        len(batches),
+	}, nil
+}
+
+func killProcessTree(cmd *exec.Cmd) error {
+	if cmd == nil || cmd.Process == nil {
+		return fmt.Errorf("process is not running")
+	}
+
+	pid := cmd.Process.Pid
+	if pid <= 0 {
+		return fmt.Errorf("invalid process id")
+	}
+
+	// Kill the full process group so `go run` parent and spawned node child both exit.
+	if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
+		if err == syscall.ESRCH {
+			return nil
+		}
+		return err
+	}
+
+	return nil
+}
+
+func (a *Actor) executeHypothesis(name, clusterID, path string, batches []experiment.CommandBatch) {
+	started := time.Now()
+	for i, batch := range batches {
+		waitFor := started.Add(batch.At)
+		if delay := time.Until(waitFor); delay > 0 {
+			time.Sleep(delay)
+		}
+
+		for _, raw := range batch.Commands {
+			if strings.HasPrefix(strings.TrimSpace(raw), "run-hypothesis") || strings.HasPrefix(strings.TrimSpace(raw), "run-experiment") {
+				log.Printf("hypothesis %s skipped nested hypothesis command at step %d: %s", name, i, raw)
+				continue
+			}
+
+			if _, err := ExecuteRuntimeCommand(raw, a); err != nil {
+				log.Printf("hypothesis %s (cluster %s) failed at step %d command %q: %v", name, clusterID, i, raw, err)
+				return
+			}
+		}
+	}
+
+	log.Printf("hypothesis %s (cluster %s) finished (%s)", name, clusterID, path)
 }
 
 /*
