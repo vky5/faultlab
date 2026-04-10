@@ -14,8 +14,8 @@ func TestLoadFileSortsTimelineAndParsesCommands(t *testing.T) {
 		t.Fatalf("unexpected name: %q", exp.Name)
 	}
 
-	if exp.Cluster.Nodes != 5 {
-		t.Fatalf("unexpected cluster nodes: %d", exp.Cluster.Nodes)
+	if len(exp.Cluster.Members) != 5 {
+		t.Fatalf("unexpected cluster members length: %d", len(exp.Cluster.Members))
 	}
 
 	if exp.Cluster.ID != "conflict_cluster" {
@@ -74,8 +74,8 @@ func TestCompileUsesMemberIDsAndPortsFromYAML(t *testing.T) {
 		t.Fatalf("LoadFile() error = %v", err)
 	}
 
-	if exp.Cluster.Nodes != 3 {
-		t.Fatalf("unexpected cluster nodes: %d", exp.Cluster.Nodes)
+	if len(exp.Cluster.Members) != 3 {
+		t.Fatalf("unexpected cluster members length: %d", len(exp.Cluster.Members))
 	}
 
 	if exp.Cluster.ID != "conflict_members_cluster" {

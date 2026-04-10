@@ -20,12 +20,8 @@ type Experiment struct {
 
 // ClusterConfig defines the experiment topology.
 type ClusterConfig struct {
-	ID             string          `yaml:"id,omitempty"`
-	Nodes          int             `yaml:"nodes,omitempty"`
-	NodeHost       string          `yaml:"node_host,omitempty"`
-	NodeBasePort   int             `yaml:"node_base_port,omitempty"`
-	NodePortStride int             `yaml:"node_port_stride,omitempty"`
-	Members        []ClusterMember `yaml:"members,omitempty"`
+	ID      string          `yaml:"id,omitempty"`
+	Members []ClusterMember `yaml:"members,omitempty"`
 }
 
 // ClusterMember defines a concrete node identity and port loaded from YAML.
@@ -39,7 +35,7 @@ type ClusterMember struct {
 type TimelineStep struct {
 	At     ExperimentDuration `yaml:"at"`
 	Action string             `yaml:"action"`
-	Groups [][]int            `yaml:"groups,omitempty"`
+	Groups [][]string         `yaml:"groups,omitempty"`
 	Key    string             `yaml:"key,omitempty"`
 	Value  string             `yaml:"value,omitempty"`
 	Target string             `yaml:"target,omitempty"`
@@ -56,9 +52,6 @@ type CompileOptions struct {
 	ClusterID        string
 	ControlPlaneHost string
 	ControlPlanePort int
-	NodeHost         string
-	NodeBasePort     int
-	NodePortStride   int
 }
 
 // ExperimentDuration keeps YAML-friendly duration parsing separate from scheduling.
@@ -119,10 +112,6 @@ func (e *Experiment) Normalize() {
 		return
 	}
 
-	if e.Cluster.Nodes == 0 && len(e.Cluster.Members) > 0 {
-		e.Cluster.Nodes = len(e.Cluster.Members)
-	}
-
 	sort.SliceStable(e.Timeline, func(i, j int) bool {
 		return e.Timeline[i].At.Duration() < e.Timeline[j].At.Duration()
 	})
@@ -141,10 +130,6 @@ func (e *Experiment) Validate() error {
 	}
 
 	if len(e.Cluster.Members) > 0 {
-		if e.Cluster.Nodes > 0 && e.Cluster.Nodes != len(e.Cluster.Members) {
-			return fmt.Errorf("cluster.nodes (%d) does not match cluster.members length (%d)", e.Cluster.Nodes, len(e.Cluster.Members))
-		}
-
 		seen := make(map[string]struct{}, len(e.Cluster.Members))
 		for i, member := range e.Cluster.Members {
 			if strings.TrimSpace(member.ID) == "" {
@@ -158,8 +143,8 @@ func (e *Experiment) Validate() error {
 			}
 			seen[member.ID] = struct{}{}
 		}
-	} else if e.Cluster.Nodes <= 0 {
-		return fmt.Errorf("cluster.nodes must be greater than zero")
+	} else {
+		return fmt.Errorf("cluster.members is required")
 	}
 	if len(e.Timeline) == 0 {
 		return fmt.Errorf("experiment timeline is empty")
@@ -193,6 +178,11 @@ func (s TimelineStep) Validate() error {
 			if len(group) == 0 {
 				return fmt.Errorf("action %q groups[%d] is empty", s.Action, i)
 			}
+			for j, nodeID := range group {
+				if strings.TrimSpace(nodeID) == "" {
+					return fmt.Errorf("action %q groups[%d][%d] node id is empty", s.Action, i, j)
+				}
+			}
 		}
 		return nil
 	case "write":
@@ -204,6 +194,9 @@ func (s TimelineStep) Validate() error {
 		}
 		if strings.TrimSpace(s.Target) == "" {
 			return fmt.Errorf("action %q requires target", s.Action)
+		}
+		if len(s.Groups) == 0 {
+			return fmt.Errorf("action %q requires groups", s.Action)
 		}
 		return nil
 	default:

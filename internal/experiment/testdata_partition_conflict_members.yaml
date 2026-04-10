@@ -17,8 +17,8 @@ timeline:
   - at: 5s
     action: partition
     groups:
-      - [1]
-      - [2, 3]
+      - [alpha]
+      - [beta, gamma]
 
   - at: 6s
     action: write
@@ -26,11 +26,11 @@ timeline:
     value: 1
     target: group1
     groups:
-      - [1]
-      - [2, 3]
+      - [alpha]
+      - [beta, gamma]
 
   - at: 8s
     action: heal_partition
     groups:
-      - [1]
-      - [2, 3]
+      - [alpha]
+      - [beta, gamma]

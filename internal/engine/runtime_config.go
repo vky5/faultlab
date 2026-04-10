@@ -1,3 +1,8 @@
+/*
+This loads the runtime configs from yaml file
+or sets defaults if no file is provided.
+*/ 
+
 package engine
 
 import (
@@ -18,15 +23,15 @@ type RuntimeConfig struct {
 	} `yaml:"controlplane"`
 
 	Actor struct {
-		ProjectRoot    string `yaml:"project_root"`
-		DefaultCPHost  string `yaml:"default_cp_host"`
+		ProjectRoot    string `yaml:"project_root"` // to resolve relative path for node binary
+		DefaultCPHost  string `yaml:"default_cp_host"` // default controlplane host for nodes to connect, used in actors.go when starting a node
 		DefaultCPPort  int    `yaml:"default_cp_port"`
-		NodeBinaryPath string `yaml:"node_binary_path"`
+		NodeBinaryPath string `yaml:"node_binary_path"` // path to node binary, if fails uses ./cmd/node/main.go as fallback
 	} `yaml:"actor"`
 
 	Nodes []NodeRuntimeConfig `yaml:"nodes"`
 
-	Bootstrap struct {
+	Bootstrap struct { // commands to be executed on startup after control plane is ready, used for demo or testing purposes
 		Commands []string `yaml:"commands"`
 	} `yaml:"bootstrap"`
 }

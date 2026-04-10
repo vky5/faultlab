@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/vky5/faultlab/internal/cluster"
-	clustermanager "github.com/vky5/faultlab/internal/cluster/manager"
 	controlplanesvc "github.com/vky5/faultlab/internal/controlplane/service"
 	"github.com/vky5/faultlab/internal/experiment"
 	pb "github.com/vky5/faultlab/internal/protocol"
@@ -33,9 +32,8 @@ type managedNodeProcess struct {
 }
 
 type Actor struct {
-	manager   *clustermanager.Manager
 	service   *controlplanesvc.Service
-	options   ActorOptions
+	options   ActorOptions // options for node process management and defaults for command execution
 	cmdCh     chan Command
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -45,11 +43,10 @@ type Actor struct {
 }
 
 // Need service for node verification registration
-func NewActor(manager *clustermanager.Manager, service *controlplanesvc.Service, options ActorOptions) *Actor {
+func NewActor(service *controlplanesvc.Service, options ActorOptions) *Actor {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Actor{
-		manager:   manager,
 		service:   service,
 		options:   options,
 		cmdCh:     make(chan Command, 32),
@@ -116,6 +113,8 @@ func (a *Actor) UnsubscribeLogs(ch chan *pb.LogRequest) {
 	a.service.UnsubscribeLogs(ch)
 }
 
+// cmdCh takes input from from a.Submit(cmd)
+// runs in main.go in separate goroutine that handles all incoming commands
 // single executionre point for the incoming commands
 func (a *Actor) Run() {
 	for {
@@ -126,7 +125,7 @@ func (a *Actor) Run() {
 			switch cmd.Type {
 
 			case CmdCreateCluster:
-				err := a.manager.CreateCluster(cmd.ClusterID, cmd.Protocol)
+				err := a.service.CreateCluster(cmd.ClusterID, cmd.Protocol)
 				if err != nil {
 					fmt.Println("create cluster error:", err)
 					cmd.Reply(nil, err)
@@ -199,7 +198,7 @@ func (a *Actor) Run() {
 				cmd.Reply(nil, nil)
 
 			case CmdListNodes:
-				nodes, err := a.manager.GetNodes(cmd.ClusterID)
+				nodes, err := a.service.GetNodes(cmd.ClusterID)
 				if err != nil {
 					fmt.Println("list error:", err)
 					cmd.Reply(nil, err)
@@ -212,7 +211,7 @@ func (a *Actor) Run() {
 				cmd.Reply(nodes, nil)
 
 			case CmdListClusters:
-				clusterIDs := a.manager.GetClusters()
+				clusterIDs := a.service.GetClusters()
 
 				type NodeInfo struct {
 					ID                  string                         `json:"id"`
@@ -233,7 +232,7 @@ func (a *Actor) Run() {
 
 				resp := []ClusterInfo{}
 				for _, id := range clusterIDs {
-					nodes, err := a.manager.GetNodes(id)
+					nodes, err := a.service.GetNodes(id)
 					if err != nil {
 						continue
 					}
@@ -254,7 +253,7 @@ func (a *Actor) Run() {
 					}
 
 					var protocol string
-					if c, err := a.manager.GetCluster(id); err == nil {
+					if c, err := a.service.GetCluster(id); err == nil {
 						protocol = c.Protocol
 					}
 
@@ -279,7 +278,7 @@ func (a *Actor) Run() {
 				cmd.Reply(map[string]any{"status": "ok"}, nil)
 
 			case CmdCrashNode:
-				n, err := a.manager.GetNode(cmd.ClusterID, cmd.NodeID)
+				n, err := a.service.GetNode(cmd.ClusterID, cmd.NodeID)
 				if err != nil {
 					cmd.Reply(nil, err)
 					continue
@@ -293,7 +292,7 @@ func (a *Actor) Run() {
 				cmd.Reply(map[string]any{"status": "ok"}, nil)
 
 			case CmdRecoverNode:
-				n, err := a.manager.GetNode(cmd.ClusterID, cmd.NodeID)
+				n, err := a.service.GetNode(cmd.ClusterID, cmd.NodeID)
 				if err != nil {
 					cmd.Reply(nil, err)
 					continue
@@ -307,7 +306,7 @@ func (a *Actor) Run() {
 				cmd.Reply(map[string]any{"status": "ok"}, nil)
 
 			case CmdSetDropRate:
-				n, err := a.manager.GetNode(cmd.ClusterID, cmd.NodeID)
+				n, err := a.service.GetNode(cmd.ClusterID, cmd.NodeID)
 				if err != nil {
 					cmd.Reply(nil, err)
 					continue
@@ -321,7 +320,7 @@ func (a *Actor) Run() {
 				cmd.Reply(map[string]any{"status": "ok"}, nil)
 
 			case CmdSetDelay:
-				n, err := a.manager.GetNode(cmd.ClusterID, cmd.NodeID)
+				n, err := a.service.GetNode(cmd.ClusterID, cmd.NodeID)
 				if err != nil {
 					cmd.Reply(nil, err)
 					continue
@@ -337,7 +336,7 @@ func (a *Actor) Run() {
 			case CmdSetPartition:
 				// Helper to update partition list for a single node
 				updateNodePartition := func(targetNodeID, otherPeerID string, enabled bool) error {
-					n, err := a.manager.GetNode(cmd.ClusterID, targetNodeID)
+					n, err := a.service.GetNode(cmd.ClusterID, targetNodeID)
 					if err != nil {
 						return err
 					}
@@ -386,13 +385,20 @@ func (a *Actor) Run() {
 				cmd.Reply(map[string]any{"status": "ok"}, nil)
 
 			case CmdKVGet:
-				value, err := a.service.ExecuteKVGet(a.ctx, cmd.ClusterID, cmd.NodeID, cmd.Key)
+				result, err := a.service.ExecuteKVGet(a.ctx, cmd.ClusterID, cmd.NodeID, cmd.Key)
 				if err != nil {
 					log.Println("kv-get error:", err)
 					cmd.Reply(nil, err)
 					continue
 				}
-				cmd.Reply(map[string]any{"value": value}, nil)
+
+				response := map[string]any{"value": result.Value}
+				if result.HasMetadata {
+					response["version"] = result.Version
+					response["origin"] = result.Origin
+				}
+
+				cmd.Reply(response, nil)
 
 			case CmdSetClusterProtocol:
 				err := a.service.SetClusterProtocol(a.ctx, cmd.ClusterID, cmd.Protocol)
@@ -591,8 +597,8 @@ func (a *Actor) killCluster(clusterID string) (int, error) {
 	}
 	a.mu.Unlock()
 
-	if _, err := a.manager.GetCluster(clusterID); err == nil {
-		if err := a.manager.RemoveCluster(clusterID); err != nil {
+	if _, err := a.service.GetCluster(clusterID); err == nil {
+		if err := a.service.RemoveCluster(clusterID); err != nil {
 			return stopped, err
 		}
 	}
@@ -634,7 +640,7 @@ func (a *Actor) runHypothesis(cmd Command) (map[string]any, error) {
 
 	compileOpts := experiment.CompileOptions{
 		ClusterID:        clusterID,
-		ControlPlaneHost: a.options.DefaultCPHost,
+		ControlPlaneHost: a.options.DefaultCPHost,  // these two are required because if we are starting a node we need to inform it about controlplane host and port so that it can send heartbeats and register itself
 		ControlPlanePort: a.options.DefaultCPPort,
 	}
 	batches, err := exp.Compile(compileOpts)

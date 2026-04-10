@@ -30,33 +30,9 @@ func (e *Experiment) Compile(opts CompileOptions) ([]CommandBatch, error) {
 		controlPlanePort = 9091
 	}
 
-	nodeHost := strings.TrimSpace(opts.NodeHost)
-	if nodeHost == "" {
-		nodeHost = strings.TrimSpace(e.Cluster.NodeHost)
-	}
-	if nodeHost == "" {
-		nodeHost = "localhost"
-	}
-
-	nodeBasePort := opts.NodeBasePort
-	if nodeBasePort <= 0 {
-		nodeBasePort = e.Cluster.NodeBasePort
-	}
-	if nodeBasePort <= 0 {
-		nodeBasePort = 7001
-	}
-
-	nodePortStride := opts.NodePortStride
-	if nodePortStride <= 0 {
-		nodePortStride = e.Cluster.NodePortStride
-	}
-	if nodePortStride <= 0 {
-		nodePortStride = 1
-	}
-
 	batches := make([]CommandBatch, 0, len(e.Timeline))
 	for _, step := range e.Timeline {
-		commands, err := step.compileCommands(clusterID, controlPlaneHost, controlPlanePort, nodeHost, nodeBasePort, nodePortStride, e.Cluster)
+		commands, err := step.compileCommands(clusterID, controlPlaneHost, controlPlanePort, e.Cluster)
 		if err != nil {
 			return nil, err
 		}
@@ -69,10 +45,10 @@ func (e *Experiment) Compile(opts CompileOptions) ([]CommandBatch, error) {
 	return batches, nil
 }
 
-func (s TimelineStep) compileCommands(clusterID, cpHost string, cpPort int, nodeHost string, nodeBasePort int, nodePortStride int, clusterCfg ClusterConfig) ([]string, error) {
+func (s TimelineStep) compileCommands(clusterID, cpHost string, cpPort int, clusterCfg ClusterConfig) ([]string, error) {
 	switch strings.TrimSpace(s.Action) {
 	case "start_cluster":
-		return compileStartClusterCommands(clusterID, cpHost, cpPort, nodeHost, nodeBasePort, nodePortStride, clusterCfg), nil
+		return compileStartClusterCommands(clusterID, cpHost, cpPort, clusterCfg), nil
 	case "partition":
 		return compilePartitionCommands(clusterID, s.Groups, true, clusterCfg)
 	case "heal_partition":
@@ -88,21 +64,16 @@ func (s TimelineStep) compileCommands(clusterID, cpHost string, cpPort int, node
 	}
 }
 
-func compileStartClusterCommands(clusterID, cpHost string, cpPort int, nodeHost string, nodeBasePort int, nodePortStride int, clusterCfg ClusterConfig) []string {
-	nodeCount := clusterCfg.Nodes
-	if len(clusterCfg.Members) > 0 {
-		nodeCount = len(clusterCfg.Members)
-	}
-
-	commands := make([]string, 0, nodeCount+1)
+func compileStartClusterCommands(clusterID, cpHost string, cpPort int, clusterCfg ClusterConfig) []string {
+	commands := make([]string, 0, len(clusterCfg.Members)+1)
 	commands = append(commands, fmt.Sprintf("cp new-cluster %s", clusterID))
 
-	for i := 1; i <= nodeCount; i++ {
-		nodeID, port, host, err := resolveMember(i, clusterCfg, nodeHost, nodeBasePort, nodePortStride)
+	for i := 1; i <= len(clusterCfg.Members); i++ {
+		nodeID, port, host, err := resolveMember(i, clusterCfg)
 		if err != nil {
 			continue
 		}
-		peers := buildPeerList(i, nodeCount, clusterCfg, nodeBasePort, nodePortStride)
+		peers := buildPeerList(i, clusterCfg)
 		command := fmt.Sprintf(
 			"start-node %s %d --cluster-id %s --host %s --peers %s --cp-host %s --cp-port %d",
 			nodeID,
@@ -119,7 +90,7 @@ func compileStartClusterCommands(clusterID, cpHost string, cpPort int, nodeHost 
 	return commands
 }
 
-func compilePartitionCommands(clusterID string, groups [][]int, enabled bool, clusterCfg ClusterConfig) ([]string, error) {
+func compilePartitionCommands(clusterID string, groups [][]string, enabled bool, clusterCfg ClusterConfig) ([]string, error) {
 	if len(groups) < 2 {
 		return nil, fmt.Errorf("partition actions require at least two groups")
 	}
@@ -129,11 +100,11 @@ func compilePartitionCommands(clusterID string, groups [][]int, enabled bool, cl
 		for rightIdx := leftIdx + 1; rightIdx < len(groups); rightIdx++ {
 			for _, leftNode := range groups[leftIdx] {
 				for _, rightNode := range groups[rightIdx] {
-					leftNodeID, err := resolveNodeID(leftNode, clusterCfg)
+					leftNodeID, err := resolveGroupNodeID(leftNode, clusterCfg)
 					if err != nil {
 						return nil, err
 					}
-					rightNodeID, err := resolveNodeID(rightNode, clusterCfg)
+					rightNodeID, err := resolveGroupNodeID(rightNode, clusterCfg)
 					if err != nil {
 						return nil, err
 					}
@@ -152,7 +123,7 @@ func compilePartitionCommands(clusterID string, groups [][]int, enabled bool, cl
 	return commands, nil
 }
 
-func resolveTargetGroupLeader(target string, groups [][]int, clusterCfg ClusterConfig) (string, error) {
+func resolveTargetGroupLeader(target string, groups [][]string, clusterCfg ClusterConfig) (string, error) {
 	groupIndex, err := parseGroupTarget(target)
 	if err != nil {
 		return "", err
@@ -164,7 +135,7 @@ func resolveTargetGroupLeader(target string, groups [][]int, clusterCfg ClusterC
 	if len(group) == 0 {
 		return "", fmt.Errorf("target %q has no nodes", target)
 	}
-	return resolveNodeID(group[0], clusterCfg)
+	return resolveGroupNodeID(group[0], clusterCfg)
 }
 
 func parseGroupTarget(target string) (int, error) {
@@ -180,13 +151,13 @@ func parseGroupTarget(target string) (int, error) {
 	return index, nil
 }
 
-func buildPeerList(nodeIndex, nodeCount int, clusterCfg ClusterConfig, nodeBasePort, nodePortStride int) string {
-	peers := make([]string, 0, nodeCount-1)
-	for i := 1; i <= nodeCount; i++ {
+func buildPeerList(nodeIndex int, clusterCfg ClusterConfig) string {
+	peers := make([]string, 0, len(clusterCfg.Members)-1)
+	for i := 1; i <= len(clusterCfg.Members); i++ {
 		if i == nodeIndex {
 			continue
 		}
-		nodeID, port, _, err := resolveMember(i, clusterCfg, "", nodeBasePort, nodePortStride)
+		nodeID, port, _, err := resolveMember(i, clusterCfg)
 		if err != nil {
 			continue
 		}
@@ -195,44 +166,37 @@ func buildPeerList(nodeIndex, nodeCount int, clusterCfg ClusterConfig, nodeBaseP
 	return strings.Join(peers, ",")
 }
 
-func resolveNodeID(nodeIndex int, clusterCfg ClusterConfig) (string, error) {
-	if nodeIndex <= 0 {
-		return "", fmt.Errorf("node index must be greater than zero")
+func resolveGroupNodeID(nodeID string, clusterCfg ClusterConfig) (string, error) {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return "", fmt.Errorf("node id is required")
 	}
 
 	if len(clusterCfg.Members) > 0 {
-		if nodeIndex > len(clusterCfg.Members) {
-			return "", fmt.Errorf("node index %d out of range for cluster.members", nodeIndex)
+		for _, member := range clusterCfg.Members {
+			if member.ID == nodeID {
+				return nodeID, nil
+			}
 		}
-		return clusterCfg.Members[nodeIndex-1].ID, nil
+		return "", fmt.Errorf("node id %q not found in cluster.members", nodeID)
 	}
 
-	return fmt.Sprintf("node%d", nodeIndex), nil
+	return "", fmt.Errorf("node id %q not found in cluster.members", nodeID)
 }
 
-func resolveMember(nodeIndex int, clusterCfg ClusterConfig, fallbackHost string, nodeBasePort int, nodePortStride int) (string, int, string, error) {
+func resolveMember(nodeIndex int, clusterCfg ClusterConfig) (string, int, string, error) {
 	if nodeIndex <= 0 {
 		return "", 0, "", fmt.Errorf("node index must be greater than zero")
 	}
 
-	if len(clusterCfg.Members) > 0 {
-		if nodeIndex > len(clusterCfg.Members) {
-			return "", 0, "", fmt.Errorf("node index %d out of range for cluster.members", nodeIndex)
-		}
-		member := clusterCfg.Members[nodeIndex-1]
-		host := strings.TrimSpace(member.Host)
-		if host == "" {
-			host = fallbackHost
-		}
-		if host == "" {
-			host = "localhost"
-		}
-		return member.ID, member.Port, host, nil
+	if nodeIndex > len(clusterCfg.Members) {
+		return "", 0, "", fmt.Errorf("node index %d out of range for cluster.members", nodeIndex)
 	}
 
-	host := fallbackHost
+	member := clusterCfg.Members[nodeIndex-1]
+	host := strings.TrimSpace(member.Host)
 	if strings.TrimSpace(host) == "" {
 		host = "localhost"
 	}
-	return fmt.Sprintf("node%d", nodeIndex), nodeBasePort + ((nodeIndex - 1) * nodePortStride), host, nil
+	return member.ID, member.Port, host, nil
 }

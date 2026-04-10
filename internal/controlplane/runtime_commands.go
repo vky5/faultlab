@@ -1,3 +1,10 @@
+/*
+This file contains functions to parse and execute controlplane commands
+and it is executed by command_listener.go when a command is received via the command listener HTTP endpoint. 
+The commands are intended for CLI clients to interact with the control plane at runtime, for example to query cluster state or trigger actions like protocol swap.
+controlplane binary cant execute it directly
+*/
+
 package controlplane
 
 import (

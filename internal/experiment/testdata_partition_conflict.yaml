@@ -21,8 +21,8 @@ timeline:
   - at: 5s
     action: partition
     groups:
-      - [1, 2]
-      - [3, 4, 5]
+      - [node1, node2]
+      - [node3, node4, node5]
 
   - at: 6s
     action: write
@@ -30,8 +30,8 @@ timeline:
     value: 1
     target: group1
     groups:
-      - [1, 2]
-      - [3, 4, 5]
+      - [node1, node2]
+      - [node3, node4, node5]
 
   - at: 6s
     action: write
@@ -39,11 +39,11 @@ timeline:
     value: 2
     target: group2
     groups:
-      - [1, 2]
-      - [3, 4, 5]
+      - [node1, node2]
+      - [node3, node4, node5]
 
   - at: 15s
     action: heal_partition
     groups:
-      - [1, 2]
-      - [3, 4, 5]
+      - [node1, node2]
+      - [node3, node4, node5]

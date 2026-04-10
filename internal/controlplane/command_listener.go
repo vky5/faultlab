@@ -76,6 +76,7 @@ func StartCommandListener(actor *Actor, cfg CommandListenerConfig) *http.Server 
 	return server
 }
 
+// authorizeCommandListener checks if the incoming request has the correct auth token for command execution.
 func authorizeCommandListener(r *http.Request, token string) bool {
 	if strings.TrimSpace(token) == "" {
 		return true
@@ -126,6 +127,7 @@ func commandName(raw string) string {
 	return parts[0]
 }
 
+//used in handling list node result
 func formatNodesTable(nodes []cluster.Node) string {
 	if len(nodes) == 0 {
 		return "no nodes found\n"
@@ -152,6 +154,7 @@ func formatNodesTable(nodes []cluster.Node) string {
 	return b.String()
 }
 
+// used in handling the cluster list command result
 func formatClustersTable(res interface{}) (string, bool) {
 	v := reflect.ValueOf(res)
 	if !v.IsValid() {

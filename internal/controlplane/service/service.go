@@ -23,6 +23,13 @@ type Service struct {
 	logListeners map[chan *protocol.LogRequest]struct{}
 }
 
+type KVGetResult struct {
+	Value       string
+	Version     int64
+	Origin      string
+	HasMetadata bool
+}
+
 /*
 CLI / RPC / API
         ↓
@@ -110,6 +117,30 @@ func (s *Service) RegisterNode(
 
 func (s *Service) GetPeers(clusterID string) ([]cluster.Node, error) {
 	return s.cluster.GetNodes(clusterID)
+}
+
+func (s *Service) CreateCluster(clusterID, protocol string) error {
+	return s.cluster.CreateCluster(clusterID, protocol)
+}
+
+func (s *Service) GetClusters() []string {
+	return s.cluster.GetClusters()
+}
+
+func (s *Service) GetCluster(clusterID string) (*cluster.Cluster, error) {
+	return s.cluster.GetCluster(clusterID)
+}
+
+func (s *Service) RemoveCluster(clusterID string) error {
+	return s.cluster.RemoveCluster(clusterID)
+}
+
+func (s *Service) GetNodes(clusterID string) ([]cluster.Node, error) {
+	return s.cluster.GetNodes(clusterID)
+}
+
+func (s *Service) GetNode(clusterID, nodeID string) (*cluster.Node, error) {
+	return s.cluster.GetNode(clusterID, nodeID)
 }
 
 func (s *Service) GetClusterProtocol(clusterID string) (string, error) {
@@ -250,15 +281,15 @@ func (s *Service) ExecuteKVPut(ctx context.Context, clusterID, nodeID, key, valu
 	return nil
 }
 
-func (s *Service) ExecuteKVGet(ctx context.Context, clusterID, nodeID, key string) (string, error) {
+func (s *Service) ExecuteKVGet(ctx context.Context, clusterID, nodeID, key string) (KVGetResult, error) {
 	n, err := s.cluster.GetNode(clusterID, nodeID)
 	if err != nil {
-		return "", err
+		return KVGetResult{}, err
 	}
 
 	payload, err := gproto.Marshal(&protocol.KVGetRequest{Key: key})
 	if err != nil {
-		return "", fmt.Errorf("marshal kv-get payload: %w", err)
+		return KVGetResult{}, fmt.Errorf("marshal kv-get payload: %w", err)
 	}
 
 	resp, err := s.NodeClient.ExecuteAction(ctx, n.Address, n.Port, &protocol.ActionRequest{
@@ -267,16 +298,16 @@ func (s *Service) ExecuteKVGet(ctx context.Context, clusterID, nodeID, key strin
 		Payload: payload,
 	})
 	if err != nil {
-		return "", fmt.Errorf("execute kv-get failed: %w", err)
+		return KVGetResult{}, fmt.Errorf("execute kv-get failed: %w", err)
 	}
 
 	if !resp.GetSuccess() {
-		return "", fmt.Errorf("kv-get rejected: %s", resp.GetMessage())
+		return KVGetResult{}, fmt.Errorf("kv-get rejected: %s", resp.GetMessage())
 	}
 
 	var out protocol.KVGetResponse
 	if err := gproto.Unmarshal(resp.GetPayload(), &out); err != nil {
-		return "", fmt.Errorf("decode kv-get response: %w", err)
+		return KVGetResult{}, fmt.Errorf("decode kv-get response: %w", err)
 	}
 
 	// Visualize KV Get signaling
@@ -289,7 +320,12 @@ func (s *Service) ExecuteKVGet(ctx context.Context, clusterID, nodeID, key strin
 		Timestamp: time.Now().Unix(),
 	})
 
-	return out.GetValue(), nil
+	return KVGetResult{
+		Value:       out.GetValue(),
+		Version:     out.GetVersion(),
+		Origin:      out.GetOrigin(),
+		HasMetadata: out.GetHasMetadata(),
+	}, nil
 }
 
 // SubscribeLogs registers a new SSE client for logs

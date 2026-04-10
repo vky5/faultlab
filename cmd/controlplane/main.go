@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -91,7 +90,7 @@ func main() {
 	service := controlplanesvc.NewClusterService(manager, nodeClient)
 
 	// ---- actor (command processor) ----
-	actor := controlplane.NewActor(manager, service, controlplane.ActorOptions{
+	actor := controlplane.NewActor(service, controlplane.ActorOptions{
 		ProjectRoot:    cpCfg.ProjectRoot,
 		DefaultCPHost:  cpCfg.DefaultCPHost,
 		DefaultCPPort:  cpCfg.DefaultCPPort,
@@ -130,6 +129,7 @@ func main() {
 	httpServer := &http.Server{Addr: httpAddr, Handler: mux}
 	log.Printf("control plane HTTP listening on %s", httpAddr)
 
+	// listening for HTTP requests
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("http server stopped: %v", err)
@@ -141,6 +141,7 @@ func main() {
 		AuthToken: cpCfg.CommandAuthToken,
 	})
 
+	// ---- bootstrap nodes and execute commands ----
 	for _, n := range runtimeCfg.Nodes {
 		if n.ID == "" || n.Port <= 0 {
 			log.Printf("skipping invalid node config: id=%q port=%d", n.ID, n.Port)
@@ -161,24 +162,17 @@ func main() {
 		}
 	}
 
+	// execute bootstrap commands by DispatchRuntimeCommand
 	for _, raw := range runtimeCfg.Bootstrap.Commands {
 		if err := controlplane.DispatchRuntimeCommand(raw, actor); err != nil {
 			log.Printf("bootstrap command failed (%q): %v", raw, err)
 		}
 	}
 
-	// ---- CLI command loop ----
-	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Println("control plane ready")
 	fmt.Println("use cpcli for interactive help and command execution")
-	go func() {
-		for scanner.Scan() {
-			if err := controlplane.DispatchRuntimeCommand(scanner.Text(), actor); err != nil {
-				fmt.Println("command error:", err)
-			}
-		}
-	}()
 
+	// Terminating the program
 	<-appCtx.Done()
 	log.Printf("shutting down control plane")
 

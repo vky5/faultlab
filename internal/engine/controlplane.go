@@ -35,10 +35,10 @@ func (e *Engine) NewControlplane() {
 
 	// ---- service layer ----
 	service := controlplanesvc.NewClusterService(manager, nodeClient)
-	actor := controlplane.NewActor(manager, service, controlplane.ActorOptions{
-		ProjectRoot:   e.ControlPlane.ProjectRoot,
-		DefaultCPHost: e.ControlPlane.DefaultCPHost,
-		DefaultCPPort: e.ControlPlane.DefaultCPPort,
+	actor := controlplane.NewActor(service, controlplane.ActorOptions{
+		ProjectRoot:    e.ControlPlane.ProjectRoot,
+		DefaultCPHost:  e.ControlPlane.DefaultCPHost,
+		DefaultCPPort:  e.ControlPlane.DefaultCPPort,
 		NodeBinaryPath: e.ControlPlane.NodeBinaryPath,
 	})
 	go actor.Run()
