@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/vky5/faultlab/internal/cluster"
 )
@@ -109,6 +110,12 @@ func formatCommandResult(rawCmd string, res interface{}) string {
 		}
 	}
 
+	if cmdName == "metrics-show" || cmdName == "metrics-stop" {
+		if out, ok := formatMetricsResult(res); ok {
+			return out
+		}
+	}
+
 	return fmt.Sprintf("%+v\n", res)
 }
 
@@ -127,7 +134,7 @@ func commandName(raw string) string {
 	return parts[0]
 }
 
-//used in handling list node result
+// used in handling list node result
 func formatNodesTable(nodes []cluster.Node) string {
 	if len(nodes) == 0 {
 		return "no nodes found\n"
@@ -328,4 +335,182 @@ func readSliceLenField(v reflect.Value, fieldName string) int {
 		return 0
 	}
 	return f.Len()
+}
+
+func formatMetricsResult(res interface{}) (string, bool) {
+	payload, ok := res.(map[string]any)
+	if !ok {
+		return "", false
+	}
+
+	clusterID, _ := payload["clusterId"].(string)
+	startedAt, _ := payload["startedAt"].(time.Time)
+	stoppedLabel := "active"
+	if stoppedRaw, exists := payload["stoppedAt"]; exists && stoppedRaw != nil {
+		switch v := stoppedRaw.(type) {
+		case *time.Time:
+			if v != nil {
+				stoppedLabel = v.Format(time.RFC3339)
+			}
+		case time.Time:
+			stoppedLabel = v.Format(time.RFC3339)
+		}
+	}
+
+	tracked := normalizeStringSlice(payload["trackedKeys"])
+
+	var b bytes.Buffer
+	_, _ = fmt.Fprintf(&b, "METRICS cluster=%s started=%s stopped=%s\n", clusterID, startedAt.Format(time.RFC3339), stoppedLabel)
+	if len(tracked) == 0 {
+		_, _ = fmt.Fprintln(&b, "tracked keys: (none)")
+	} else {
+		_, _ = fmt.Fprintf(&b, "tracked keys: %s\n", strings.Join(tracked, ", "))
+	}
+
+	results, ok := payload["results"]
+	if !ok || results == nil {
+		_, _ = fmt.Fprintln(&b, "no per-key metrics yet")
+		return b.String(), true
+	}
+
+	resultsValue := reflect.ValueOf(results)
+	if !resultsValue.IsValid() || resultsValue.Kind() != reflect.Map || resultsValue.Len() == 0 {
+		_, _ = fmt.Fprintln(&b, "no per-key metrics yet")
+		return b.String(), true
+	}
+
+	keys := make([]string, 0, resultsValue.Len())
+	for _, k := range resultsValue.MapKeys() {
+		if k.Kind() == reflect.String {
+			keys = append(keys, k.String())
+		}
+	}
+	sort.Strings(keys)
+
+	tw := tabwriter.NewWriter(&b, 0, 4, 2, ' ', 0)
+	_, _ = fmt.Fprintln(tw, "KEY\tFINAL\tCONVERGENCE\tPEAK\tAUC\tTOP_STALE")
+	for _, key := range keys {
+		resultVal := resultsValue.MapIndex(reflect.ValueOf(key))
+		if !resultVal.IsValid() {
+			continue
+		}
+		if resultVal.Kind() == reflect.Ptr {
+			if resultVal.IsNil() {
+				continue
+			}
+			resultVal = resultVal.Elem()
+		}
+
+		final := readBoolField(resultVal, "FinalConsistent")
+		peak := readIntField(resultVal, "PeakDivergence")
+		auc := readDurationField(resultVal, "AreaUnderDivergence")
+		conv := readDurationPointerField(resultVal, "ConvergenceTime")
+		topStale := readTopStaleNode(resultVal)
+
+		_, _ = fmt.Fprintf(
+			tw,
+			"%s\t%t\t%s\t%d\t%s\t%s\n",
+			key,
+			final,
+			conv,
+			peak,
+			auc,
+			topStale,
+		)
+	}
+	_ = tw.Flush()
+
+	return b.String(), true
+}
+
+func normalizeStringSlice(raw interface{}) []string {
+	switch v := raw.(type) {
+	case []string:
+		out := make([]string, len(v))
+		copy(out, v)
+		sort.Strings(out)
+		return out
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				out = append(out, s)
+			}
+		}
+		sort.Strings(out)
+		return out
+	default:
+		return nil
+	}
+}
+
+func readDurationField(v reflect.Value, fieldName string) string {
+	f, ok := readField(v, fieldName)
+	if !ok {
+		return "0s"
+	}
+	switch f.Kind() {
+	case reflect.Int, reflect.Int64:
+		return time.Duration(f.Int()).String()
+	default:
+		return fmt.Sprintf("%v", f.Interface())
+	}
+}
+
+func readDurationPointerField(v reflect.Value, fieldName string) string {
+	f, ok := readField(v, fieldName)
+	if !ok {
+		return "-"
+	}
+	if f.Kind() != reflect.Ptr {
+		return "-"
+	}
+	if f.IsNil() {
+		return "-"
+	}
+	e := f.Elem()
+	switch e.Kind() {
+	case reflect.Int, reflect.Int64:
+		return time.Duration(e.Int()).String()
+	default:
+		return fmt.Sprintf("%v", e.Interface())
+	}
+}
+
+func readTopStaleNode(v reflect.Value) string {
+	f, ok := readField(v, "StaleDurationPerNode")
+	if !ok || f.Kind() != reflect.Map || f.Len() == 0 {
+		return "-"
+	}
+
+	maxNode := ""
+	maxDur := time.Duration(-1)
+	for _, k := range f.MapKeys() {
+		if k.Kind() != reflect.String {
+			continue
+		}
+		node := k.String()
+		dv := f.MapIndex(k)
+		if !dv.IsValid() {
+			continue
+		}
+
+		var d time.Duration
+		switch dv.Kind() {
+		case reflect.Int, reflect.Int64:
+			d = time.Duration(dv.Int())
+		default:
+			continue
+		}
+
+		if d > maxDur || (d == maxDur && node < maxNode) {
+			maxDur = d
+			maxNode = node
+		}
+	}
+
+	if maxNode == "" {
+		return "-"
+	}
+	return fmt.Sprintf("%s=%s", maxNode, maxDur)
 }

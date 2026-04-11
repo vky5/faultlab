@@ -146,6 +146,10 @@ While control plane is running, enter commands in its terminal:
 - list-clusters
 - kv-put <cluster-id> <node-id> <key> <value>
 - kv-get <cluster-id> <node-id> <key>
+- metrics-start <cluster-id> [interval-ms]
+- metrics-watch-key <cluster-id> <key>
+- metrics-show <cluster-id>
+- metrics-stop <cluster-id>
 - set-fault <cluster-id> <node-id> <crashed:true|false> <drop-rate:0..1> <delay-ms:int> [partition-csv]
 - help
 

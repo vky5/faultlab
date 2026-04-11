@@ -46,7 +46,7 @@ func (r *Runtime) handleActionEvent(ev RuntimeEvent) {
 			return
 		}
 
-		val, found, err := GetAction(r.proto, p.Key)
+		meta, found, err := GetActionWithMetadata(r.proto, p.Key)
 		if err != nil {
 			respCh <- fail(err.Error())
 			return
@@ -57,7 +57,14 @@ func (r *Runtime) handleActionEvent(ev RuntimeEvent) {
 			return
 		}
 
-		bytes, err := proto.Marshal(&protocol.KVGetResponse{Value: val})
+		response := &protocol.KVGetResponse{Value: meta.Value}
+		if meta.Version > 0 || meta.Origin != "" {
+			response.Version = meta.Version
+			response.Origin = meta.Origin
+			response.HasMetadata = true
+		}
+
+		bytes, err := proto.Marshal(response)
 		if err != nil {
 			respCh <- fail("serialization failed")
 			return

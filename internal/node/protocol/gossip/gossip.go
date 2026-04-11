@@ -344,6 +344,14 @@ func (g *GossipProtocol) Get(key string) (string, bool) {
 	return val.Data, true
 }
 
+func (g *GossipProtocol) GetWithMetadata(key string) (string, int64, string, bool) {
+	val, ok := g.store[key]
+	if !ok {
+		return "", 0, "", false
+	}
+	return val.Data, val.Version, val.NodeID, true
+}
+
 // Delete removes a key from the local store (version-neutral for now)
 func (g *GossipProtocol) Delete(key string) {
 	if _, ok := g.store[key]; ok {

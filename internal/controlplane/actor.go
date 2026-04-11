@@ -382,6 +382,7 @@ func (a *Actor) Run() {
 					cmd.Reply(nil, err)
 					continue
 				}
+				a.service.RecordWriteKeyForMetrics(cmd.ClusterID, cmd.Key)
 				cmd.Reply(map[string]any{"status": "ok"}, nil)
 
 			case CmdKVGet:
@@ -417,6 +418,41 @@ func (a *Actor) Run() {
 				}
 				cmd.Reply(map[string]any{"status": "ok", "clusterId": cmd.ClusterID, "stoppedNodeProcesses": stopped}, nil)
 
+			case CmdMetricsStart:
+				interval := time.Duration(cmd.IntervalMs) * time.Millisecond
+				if err := a.service.StartMetricsSession(cmd.ClusterID, interval); err != nil {
+					cmd.Reply(nil, err)
+					continue
+				}
+				effectiveInterval := cmd.IntervalMs
+				if effectiveInterval <= 0 {
+					effectiveInterval = 1000
+				}
+				cmd.Reply(map[string]any{"status": "started", "clusterId": cmd.ClusterID, "intervalMs": effectiveInterval}, nil)
+
+			case CmdMetricsStop:
+				result, err := a.service.StopMetricsSession(cmd.ClusterID)
+				if err != nil {
+					cmd.Reply(nil, err)
+					continue
+				}
+				cmd.Reply(result, nil)
+
+			case CmdMetricsWatchKey:
+				if err := a.service.AddMetricsWatchKey(cmd.ClusterID, cmd.Key); err != nil {
+					cmd.Reply(nil, err)
+					continue
+				}
+				cmd.Reply(map[string]any{"status": "watching", "clusterId": cmd.ClusterID, "key": cmd.Key}, nil)
+
+			case CmdMetricsShow:
+				result, err := a.service.GetMetricsSnapshot(cmd.ClusterID)
+				if err != nil {
+					cmd.Reply(nil, err)
+					continue
+				}
+				cmd.Reply(result, nil)
+
 			case CmdRunHypothesis:
 				started, err := a.runHypothesis(cmd)
 				if err != nil {
@@ -440,6 +476,10 @@ func (a *Actor) Run() {
 					"kv-put <cluster-id> <node-id> <key> <value>",
 					"kv-get <cluster-id> <node-id> <key>",
 					"run-hypothesis <relative-experiment-path>",
+					"metrics-start <cluster-id> [interval-ms]",
+					"metrics-watch-key <cluster-id> <key>",
+					"metrics-show <cluster-id>",
+					"metrics-stop <cluster-id>",
 					"set-fault <cluster-id> <node-id> <crashed:true|false> <drop-rate:0..1> <delay-ms:int> [partition-csv]",
 					"fault-crash <cluster-id> <node-id>",
 					"fault-recover <cluster-id> <node-id>",
@@ -564,6 +604,8 @@ func (a *Actor) killCluster(clusterID string) (int, error) {
 		return 0, fmt.Errorf("cluster id is required")
 	}
 
+	a.service.StopMetricsSessionIfActive(clusterID)
+
 	type processRef struct {
 		nodeID string
 		proc   *exec.Cmd
@@ -640,15 +682,16 @@ func (a *Actor) runHypothesis(cmd Command) (map[string]any, error) {
 
 	compileOpts := experiment.CompileOptions{
 		ClusterID:        clusterID,
-		ControlPlaneHost: a.options.DefaultCPHost,  // these two are required because if we are starting a node we need to inform it about controlplane host and port so that it can send heartbeats and register itself
+		ControlPlaneHost: a.options.DefaultCPHost, // these two are required because if we are starting a node we need to inform it about controlplane host and port so that it can send heartbeats and register itself
 		ControlPlanePort: a.options.DefaultCPPort,
 	}
 	batches, err := exp.Compile(compileOpts)
 	if err != nil {
 		return nil, fmt.Errorf("compile hypothesis: %w", err)
 	}
+	trackedKeys := collectHypothesisWriteKeys(exp)
 
-	go a.executeHypothesis(exp.Name, clusterID, absPath, batches)
+	go a.executeHypothesis(exp.Name, clusterID, absPath, batches, trackedKeys)
 
 	return map[string]any{
 		"status":       "started",
@@ -658,6 +701,31 @@ func (a *Actor) runHypothesis(cmd Command) (map[string]any, error) {
 		"resolvedPath": absPath,
 		"steps":        len(batches),
 	}, nil
+}
+
+func collectHypothesisWriteKeys(exp *experiment.Experiment) []string {
+	if exp == nil {
+		return nil
+	}
+
+	seen := map[string]struct{}{}
+	keys := make([]string, 0)
+	for _, step := range exp.Timeline {
+		if strings.TrimSpace(step.Action) != "write" {
+			continue
+		}
+		key := strings.TrimSpace(step.Key)
+		if key == "" {
+			continue
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
+	}
+
+	return keys
 }
 
 func killProcessTree(cmd *exec.Cmd) error {
@@ -681,12 +749,53 @@ func killProcessTree(cmd *exec.Cmd) error {
 	return nil
 }
 
-func (a *Actor) executeHypothesis(name, clusterID, path string, batches []experiment.CommandBatch) {
+func (a *Actor) executeHypothesis(name, clusterID, path string, batches []experiment.CommandBatch, trackedKeys []string) {
 	started := time.Now()
+	metricsStarted := false
+	watchRegistered := false
+
+	defer func() {
+		if !metricsStarted {
+			return
+		}
+		result, err := a.service.StopMetricsSession(clusterID)
+		if err != nil {
+			log.Printf("hypothesis %s metrics stop failed for cluster %s: %v", name, clusterID, err)
+			return
+		}
+		log.Printf("hypothesis %s metrics finalized for cluster %s: %+v", name, clusterID, result)
+	}()
+
 	for i, batch := range batches {
 		waitFor := started.Add(batch.At)
 		if delay := time.Until(waitFor); delay > 0 {
 			time.Sleep(delay)
+		}
+
+		if !metricsStarted {
+			startedNow, err := a.service.StartMetricsSessionIfInactive(clusterID, time.Second)
+			if err == nil {
+				metricsStarted = startedNow || a.service.Metrics().IsActive(clusterID)
+				if metricsStarted {
+					log.Printf("hypothesis %s metrics started for cluster %s", name, clusterID)
+				}
+			} else {
+				log.Printf("hypothesis %s metrics start deferred for cluster %s: %v", name, clusterID, err)
+			}
+		}
+
+		if metricsStarted && !watchRegistered {
+			allWatched := true
+			for _, key := range trackedKeys {
+				if err := a.service.AddMetricsWatchKey(clusterID, key); err != nil {
+					allWatched = false
+					log.Printf("hypothesis %s metrics watch deferred for cluster %s key %s: %v", name, clusterID, key, err)
+					break
+				}
+			}
+			if allWatched {
+				watchRegistered = true
+			}
 		}
 
 		for _, raw := range batch.Commands {

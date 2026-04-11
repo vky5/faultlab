@@ -303,6 +303,46 @@ func Parse(input string) (Command, error) {
 		cmd := NewCommand(CmdKillCluster)
 		cmd.ClusterID = parts[1]
 		return cmd, nil
+
+	case "metrics-start":
+		if len(parts) < 2 {
+			return Command{}, fmt.Errorf("usage: metrics-start <cluster-id> [interval-ms]")
+		}
+		cmd := NewCommand(CmdMetricsStart)
+		cmd.ClusterID = parts[1]
+		if len(parts) >= 3 {
+			intervalMs, err := strconv.Atoi(parts[2])
+			if err != nil {
+				return Command{}, fmt.Errorf("invalid interval-ms: %v", err)
+			}
+			cmd.IntervalMs = intervalMs
+		}
+		return cmd, nil
+
+	case "metrics-stop":
+		if len(parts) < 2 {
+			return Command{}, fmt.Errorf("usage: metrics-stop <cluster-id>")
+		}
+		cmd := NewCommand(CmdMetricsStop)
+		cmd.ClusterID = parts[1]
+		return cmd, nil
+
+	case "metrics-watch-key":
+		if len(parts) < 3 {
+			return Command{}, fmt.Errorf("usage: metrics-watch-key <cluster-id> <key>")
+		}
+		cmd := NewCommand(CmdMetricsWatchKey)
+		cmd.ClusterID = parts[1]
+		cmd.Key = parts[2]
+		return cmd, nil
+
+	case "metrics-show":
+		if len(parts) < 2 {
+			return Command{}, fmt.Errorf("usage: metrics-show <cluster-id>")
+		}
+		cmd := NewCommand(CmdMetricsShow)
+		cmd.ClusterID = parts[1]
+		return cmd, nil
 	}
 
 	return Command{}, fmt.Errorf("unknown command")

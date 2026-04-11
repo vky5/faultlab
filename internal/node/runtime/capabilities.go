@@ -16,6 +16,16 @@ type KVGet interface {
 	Get(key string) (string, bool)
 }
 
+type KVGetMetadata struct {
+	Value   string
+	Version int64
+	Origin  string
+}
+
+type KVGetWithMetadata interface {
+	GetWithMetadata(key string) (string, int64, string, bool)
+}
+
 type KVDelete interface {
 	Delete(key string)
 }
@@ -58,6 +68,28 @@ func GetAction(proto any, args ...string) (string, bool, error) {
 		return value, found, nil
 	}
 	return "", false, fmt.Errorf("kv_read not supported by protocol")
+}
+
+func GetActionWithMetadata(proto any, args ...string) (KVGetMetadata, bool, error) {
+	if readable, ok := proto.(KVGetWithMetadata); ok {
+		if len(args) == 0 {
+			return KVGetMetadata{}, false, nil
+		}
+		if len(args) != 1 {
+			return KVGetMetadata{}, false, fmt.Errorf("kv_get expects key")
+		}
+
+		key := args[0]
+		value, version, origin, found := readable.GetWithMetadata(key)
+		return KVGetMetadata{Value: value, Version: version, Origin: origin}, found, nil
+	}
+
+	value, found, err := GetAction(proto, args...)
+	if err != nil {
+		return KVGetMetadata{}, false, err
+	}
+
+	return KVGetMetadata{Value: value}, found, nil
 }
 
 func DeleteAction(proto any, args ...string) error {

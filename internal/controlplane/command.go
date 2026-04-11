@@ -22,6 +22,10 @@ const (
 	CmdSetClusterProtocol
 	CmdRunHypothesis
 	CmdKillCluster
+	CmdMetricsStart
+	CmdMetricsStop
+	CmdMetricsWatchKey
+	CmdMetricsShow
 	CmdHelp
 )
 
@@ -50,6 +54,7 @@ type Command struct {
 	ProjectRoot string
 	CPHost      string
 	CPPort      int
+	IntervalMs  int
 	replyCh     chan CommandResult
 }
 

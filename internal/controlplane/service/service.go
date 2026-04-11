@@ -10,6 +10,7 @@ import (
 
 	"github.com/vky5/faultlab/internal/cluster"
 	clustermanager "github.com/vky5/faultlab/internal/cluster/manager"
+	"github.com/vky5/faultlab/internal/metrics"
 	"github.com/vky5/faultlab/internal/protocol"
 	gproto "google.golang.org/protobuf/proto"
 )
@@ -21,6 +22,9 @@ type Service struct {
 
 	logMu        sync.RWMutex
 	logListeners map[chan *protocol.LogRequest]struct{}
+	metrics      *metrics.SessionManager
+	metricsMu    sync.Mutex
+	metricsLoops map[string]context.CancelFunc
 }
 
 type KVGetResult struct {
@@ -43,6 +47,210 @@ func NewClusterService(cluster *clustermanager.Manager, nodeClient NodeOperator)
 		cluster:      cluster,
 		NodeClient:   nodeClient,
 		logListeners: make(map[chan *protocol.LogRequest]struct{}),
+		metrics:      metrics.NewSessionManager(),
+		metricsLoops: make(map[string]context.CancelFunc),
+	}
+}
+
+func (s *Service) Metrics() *metrics.SessionManager {
+	return s.metrics
+}
+
+func (s *Service) StartMetricsSession(clusterID string, interval time.Duration) error {
+	clusterID = strings.TrimSpace(clusterID)
+	if clusterID == "" {
+		return fmt.Errorf("cluster id is required")
+	}
+	if interval <= 0 {
+		interval = time.Second
+	}
+
+	if _, err := s.cluster.GetCluster(clusterID); err != nil {
+		return err
+	}
+
+	if err := s.metrics.Start(clusterID, time.Now()); err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	s.metricsMu.Lock()
+	s.metricsLoops[clusterID] = cancel
+	s.metricsMu.Unlock()
+
+	go s.runMetricsSampler(ctx, clusterID, interval)
+	return nil
+}
+
+func (s *Service) StartMetricsSessionIfInactive(clusterID string, interval time.Duration) (bool, error) {
+	clusterID = strings.TrimSpace(clusterID)
+	if clusterID == "" {
+		return false, fmt.Errorf("cluster id is required")
+	}
+	if s.metrics.IsActive(clusterID) {
+		return false, nil
+	}
+	if err := s.StartMetricsSession(clusterID, interval); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *Service) StopMetricsSession(clusterID string) (map[string]any, error) {
+	clusterID = strings.TrimSpace(clusterID)
+	if clusterID == "" {
+		return nil, fmt.Errorf("cluster id is required")
+	}
+
+	s.metricsMu.Lock()
+	if cancel, ok := s.metricsLoops[clusterID]; ok {
+		cancel()
+		delete(s.metricsLoops, clusterID)
+	}
+	s.metricsMu.Unlock()
+
+	if err := s.metrics.Stop(clusterID, time.Now()); err != nil {
+		return nil, err
+	}
+
+	snap, err := s.metrics.GetSession(clusterID)
+	if err != nil {
+		return nil, err
+	}
+	results, err := s.metrics.ComputeAllResults(clusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]any{
+		"status":      "stopped",
+		"clusterId":   clusterID,
+		"startedAt":   snap.StartedAt,
+		"stoppedAt":   snap.StoppedAt,
+		"trackedKeys": snap.TrackedKeys,
+		"results":     results,
+	}, nil
+}
+
+func (s *Service) StopMetricsSessionIfActive(clusterID string) {
+	clusterID = strings.TrimSpace(clusterID)
+	if clusterID == "" {
+		return
+	}
+	if !s.metrics.IsActive(clusterID) {
+		return
+	}
+	if _, err := s.StopMetricsSession(clusterID); err != nil {
+		log.Printf("stop metrics session during cleanup failed: cluster=%s err=%v", clusterID, err)
+	}
+}
+
+func (s *Service) AddMetricsWatchKey(clusterID, key string) error {
+	return s.metrics.TrackKey(clusterID, key)
+}
+
+func (s *Service) RecordWriteKeyForMetrics(clusterID, key string) {
+	if !s.metrics.IsActive(clusterID) {
+		return
+	}
+	if err := s.metrics.TrackKey(clusterID, key); err != nil {
+		log.Printf("metrics track key skipped: cluster=%s key=%s err=%v", clusterID, key, err)
+	}
+}
+
+func (s *Service) GetMetricsSnapshot(clusterID string) (map[string]any, error) {
+	clusterID = strings.TrimSpace(clusterID)
+	if clusterID == "" {
+		return nil, fmt.Errorf("cluster id is required")
+	}
+
+	snap, err := s.metrics.GetSession(clusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	results, err := s.metrics.ComputeAllResults(clusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]any{
+		"clusterId":   clusterID,
+		"startedAt":   snap.StartedAt,
+		"stoppedAt":   snap.StoppedAt,
+		"trackedKeys": snap.TrackedKeys,
+		"results":     results,
+	}, nil
+}
+
+func (s *Service) runMetricsSampler(ctx context.Context, clusterID string, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	// Try one immediate sample so sessions do not miss early state transitions.
+	s.sampleAllTrackedKeys(ctx, clusterID)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.sampleAllTrackedKeys(ctx, clusterID)
+		}
+	}
+}
+
+func (s *Service) sampleAllTrackedKeys(ctx context.Context, clusterID string) {
+	if !s.metrics.IsActive(clusterID) {
+		return
+	}
+
+	session, err := s.metrics.GetSession(clusterID)
+	if err != nil {
+		return
+	}
+	if len(session.TrackedKeys) == 0 {
+		return
+	}
+
+	nodes, err := s.cluster.GetNodes(clusterID)
+	if err != nil {
+		log.Printf("metrics sampler failed to list nodes: cluster=%s err=%v", clusterID, err)
+		return
+	}
+	if len(nodes) == 0 {
+		return
+	}
+
+	now := time.Now()
+	for _, key := range session.TrackedKeys {
+		nodeStates := make(map[string]metrics.NodeState, len(nodes))
+		ok := true
+
+		for _, n := range nodes {
+			queryCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+			res, err := s.ExecuteKVGet(queryCtx, clusterID, n.ID, key)
+			cancel()
+			if err != nil {
+				ok = false
+				log.Printf("metrics sampler kv-get failed: cluster=%s key=%s node=%s err=%v", clusterID, key, n.ID, err)
+				break
+			}
+
+			nodeStates[n.ID] = metrics.NodeState{
+				Value:       res.Value,
+				Version:     res.Version,
+				Origin:      res.Origin,
+				HasMetadata: res.HasMetadata,
+			}
+		}
+
+		if !ok {
+			continue
+		}
+		if err := s.metrics.RecordSnapshot(clusterID, key, now, nodeStates); err != nil {
+			log.Printf("metrics sampler failed to record snapshot: cluster=%s key=%s err=%v", clusterID, key, err)
+		}
 	}
 }
 
