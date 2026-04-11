@@ -105,6 +105,18 @@ func (s *Server) HandleNodes(w http.ResponseWriter, r *http.Request) {
 	} else if r.Method == http.MethodGet && len(parts) == 5 && parts[4] == "logs" {
 		s.streamLogs(w, r, clusterID)
 		return
+	} else if r.Method == http.MethodGet && len(parts) == 5 && parts[4] == "metrics" {
+		s.getMetrics(w, r, clusterID)
+		return
+	} else if r.Method == http.MethodPost && len(parts) == 6 && parts[4] == "metrics" && parts[5] == "start" {
+		s.startMetrics(w, r, clusterID)
+		return
+	} else if r.Method == http.MethodPost && len(parts) == 6 && parts[4] == "metrics" && parts[5] == "stop" {
+		s.stopMetrics(w, r, clusterID)
+		return
+	} else if r.Method == http.MethodPost && len(parts) == 6 && parts[4] == "metrics" && parts[5] == "watch" {
+		s.watchMetricsKey(w, r, clusterID)
+		return
 	} else if r.Method == http.MethodDelete && len(parts) == 6 {
 		nodeID := parts[5]
 		s.removeNode(w, r, clusterID, nodeID)
@@ -418,4 +430,83 @@ func (s *Server) swapProtocol(w http.ResponseWriter, r *http.Request, clusterID 
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+type startMetricsReq struct {
+	IntervalMs int `json:"interval_ms"`
+}
+
+func (s *Server) startMetrics(w http.ResponseWriter, r *http.Request, clusterID string) {
+	var req startMetricsReq
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	cmd := controlplane.NewCommand(controlplane.CmdMetricsStart)
+	cmd.ClusterID = clusterID
+	cmd.IntervalMs = req.IntervalMs
+	s.actor.Submit(cmd)
+
+	res, err := cmd.MapWait()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(res)
+}
+
+func (s *Server) stopMetrics(w http.ResponseWriter, r *http.Request, clusterID string) {
+	cmd := controlplane.NewCommand(controlplane.CmdMetricsStop)
+	cmd.ClusterID = clusterID
+	s.actor.Submit(cmd)
+
+	res, err := cmd.MapWait()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(res)
+}
+
+func (s *Server) getMetrics(w http.ResponseWriter, r *http.Request, clusterID string) {
+	cmd := controlplane.NewCommand(controlplane.CmdMetricsShow)
+	cmd.ClusterID = clusterID
+	s.actor.Submit(cmd)
+
+	res, err := cmd.MapWait()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(res)
+}
+
+type watchKeyReq struct {
+	Key string `json:"key"`
+}
+
+func (s *Server) watchMetricsKey(w http.ResponseWriter, r *http.Request, clusterID string) {
+	var req watchKeyReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	cmd := controlplane.NewCommand(controlplane.CmdMetricsWatchKey)
+	cmd.ClusterID = clusterID
+	cmd.Key = req.Key
+	s.actor.Submit(cmd)
+
+	res, err := cmd.MapWait()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(res)
 }

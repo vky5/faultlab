@@ -76,14 +76,16 @@ func (a *Actor) Stop() {
 
 func (a *Actor) stopAllManagedNodeProcesses() {
 	type processRef struct {
+		key    string
 		nodeID string
 		proc   *exec.Cmd
 	}
 
 	a.mu.Lock()
 	procs := make([]processRef, 0, len(a.nodeProcs))
-	for nodeID, proc := range a.nodeProcs {
-		procs = append(procs, processRef{nodeID: nodeID, proc: proc})
+	for key, proc := range a.nodeProcs {
+		_, nodeID := parseManagedProcessKey(key)
+		procs = append(procs, processRef{key: key, nodeID: nodeID, proc: proc})
 	}
 	a.mu.Unlock()
 
@@ -98,8 +100,8 @@ func (a *Actor) stopAllManagedNodeProcesses() {
 
 	a.mu.Lock()
 	for _, p := range procs {
-		delete(a.nodeProcs, p.nodeID)
-		delete(a.nodeMeta, p.nodeID)
+		delete(a.nodeProcs, p.key)
+		delete(a.nodeMeta, p.key)
 	}
 	a.mu.Unlock()
 }
@@ -140,10 +142,10 @@ func (a *Actor) Run() {
 
 			case CmdStopNodeProcess:
 				a.mu.Lock()
-				proc, ok := a.nodeProcs[cmd.NodeID]
+				procKey, proc, err := a.findManagedProcessByNodeIDLocked(cmd.NodeID)
 				a.mu.Unlock()
-				if !ok {
-					cmd.Reply(nil, fmt.Errorf("node process not running: %s", cmd.NodeID))
+				if err != nil {
+					cmd.Reply(nil, err)
 					continue
 				}
 
@@ -158,8 +160,8 @@ func (a *Actor) Run() {
 				}
 
 				a.mu.Lock()
-				delete(a.nodeProcs, cmd.NodeID)
-				delete(a.nodeMeta, cmd.NodeID)
+				delete(a.nodeProcs, procKey)
+				delete(a.nodeMeta, procKey)
 				a.mu.Unlock()
 
 				cmd.Reply(map[string]any{"stopped": true, "nodeId": cmd.NodeID}, nil)
@@ -167,12 +169,16 @@ func (a *Actor) Run() {
 			case CmdListNodeProcesses:
 				a.mu.Lock()
 				procs := make([]managedNodeProcess, 0, len(a.nodeProcs))
-				for nodeID, proc := range a.nodeProcs {
+				for key, proc := range a.nodeProcs {
+					clusterID, nodeID := parseManagedProcessKey(key)
+					if clusterID == "" {
+						clusterID = a.nodeMeta[key]
+					}
 					pid := 0
 					if proc != nil && proc.Process != nil {
 						pid = proc.Process.Pid
 					}
-					procs = append(procs, managedNodeProcess{NodeID: nodeID, ClusterID: a.nodeMeta[nodeID], PID: pid})
+					procs = append(procs, managedNodeProcess{NodeID: nodeID, ClusterID: clusterID, PID: pid})
 				}
 				a.mu.Unlock()
 
@@ -496,10 +502,16 @@ func (a *Actor) Run() {
 }
 
 func (a *Actor) startNodeProcess(cmd Command) error {
+	clusterID := cmd.ClusterID
+	if clusterID == "" {
+		clusterID = "default"
+	}
+	procKey := managedProcessKey(clusterID, cmd.NodeID)
+
 	a.mu.Lock()
-	if _, exists := a.nodeProcs[cmd.NodeID]; exists {
+	if _, exists := a.nodeProcs[procKey]; exists {
 		a.mu.Unlock()
-		return fmt.Errorf("node process already running: %s", cmd.NodeID)
+		return fmt.Errorf("node process already running: %s (cluster %s)", cmd.NodeID, clusterID)
 	}
 	a.mu.Unlock()
 
@@ -525,10 +537,6 @@ func (a *Actor) startNodeProcess(cmd Command) error {
 		cpPort = 9000
 	}
 
-	clusterID := cmd.ClusterID
-	if clusterID == "" {
-		clusterID = "default"
-	}
 	host := cmd.Host
 	if host == "" {
 		host = "localhost"
@@ -557,8 +565,8 @@ func (a *Actor) startNodeProcess(cmd Command) error {
 	}
 
 	a.mu.Lock()
-	a.nodeProcs[cmd.NodeID] = proc
-	a.nodeMeta[cmd.NodeID] = clusterID
+	a.nodeProcs[procKey] = proc
+	a.nodeMeta[procKey] = clusterID
 	a.mu.Unlock()
 
 	go func() {
@@ -566,8 +574,8 @@ func (a *Actor) startNodeProcess(cmd Command) error {
 			log.Printf("node process %s exited with error: %v", cmd.NodeID, err)
 		}
 		a.mu.Lock()
-		delete(a.nodeProcs, cmd.NodeID)
-		delete(a.nodeMeta, cmd.NodeID)
+		delete(a.nodeProcs, procKey)
+		delete(a.nodeMeta, procKey)
 		a.mu.Unlock()
 	}()
 
@@ -607,17 +615,19 @@ func (a *Actor) killCluster(clusterID string) (int, error) {
 	a.service.StopMetricsSessionIfActive(clusterID)
 
 	type processRef struct {
+		key    string
 		nodeID string
 		proc   *exec.Cmd
 	}
 
 	a.mu.Lock()
 	toKill := make([]processRef, 0)
-	for nodeID, proc := range a.nodeProcs {
-		if a.nodeMeta[nodeID] != clusterID {
+	for key, proc := range a.nodeProcs {
+		if a.nodeMeta[key] != clusterID {
 			continue
 		}
-		toKill = append(toKill, processRef{nodeID: nodeID, proc: proc})
+		_, nodeID := parseManagedProcessKey(key)
+		toKill = append(toKill, processRef{key: key, nodeID: nodeID, proc: proc})
 	}
 	a.mu.Unlock()
 
@@ -634,8 +644,8 @@ func (a *Actor) killCluster(clusterID string) (int, error) {
 
 	a.mu.Lock()
 	for _, item := range toKill {
-		delete(a.nodeProcs, item.nodeID)
-		delete(a.nodeMeta, item.nodeID)
+		delete(a.nodeProcs, item.key)
+		delete(a.nodeMeta, item.key)
 	}
 	a.mu.Unlock()
 
@@ -812,6 +822,42 @@ func (a *Actor) executeHypothesis(name, clusterID, path string, batches []experi
 	}
 
 	log.Printf("hypothesis %s (cluster %s) finished (%s)", name, clusterID, path)
+}
+
+func managedProcessKey(clusterID, nodeID string) string {
+	return clusterID + "::" + nodeID
+}
+
+func parseManagedProcessKey(key string) (string, string) {
+	parts := strings.SplitN(key, "::", 2)
+	if len(parts) != 2 {
+		return "", key
+	}
+	return parts[0], parts[1]
+}
+
+func (a *Actor) findManagedProcessByNodeIDLocked(nodeID string) (string, *exec.Cmd, error) {
+	matches := make([]string, 0)
+	for key := range a.nodeProcs {
+		_, keyNodeID := parseManagedProcessKey(key)
+		if keyNodeID == nodeID {
+			matches = append(matches, key)
+		}
+	}
+
+	if len(matches) == 0 {
+		return "", nil, fmt.Errorf("node process not running: %s", nodeID)
+	}
+	if len(matches) > 1 {
+		clusters := make([]string, 0, len(matches))
+		for _, key := range matches {
+			clusters = append(clusters, a.nodeMeta[key])
+		}
+		return "", nil, fmt.Errorf("node id %s is running in multiple clusters %v; use kill-cluster or make node ids unique", nodeID, clusters)
+	}
+
+	key := matches[0]
+	return key, a.nodeProcs[key], nil
 }
 
 /*

@@ -1,0 +1,221 @@
+name: complex_multi_key_edge_cases
+
+cluster:
+  id: edge_complex_cluster
+  members:
+    - id: node1
+      port: 7201
+    - id: node2
+      port: 7202
+    - id: node3
+      port: 7203
+    - id: node4
+      port: 7204
+    - id: node5
+      port: 7205
+    - id: node6
+      port: 7206
+
+# Intentionally unsorted timeline to exercise Normalize() sorting.
+# Also includes repeated partition/heal cycles and same-timestamp actions.
+timeline:
+  - at: 0s
+    action: start_cluster
+
+  - at: 1s
+    action: write
+    key: k_bootstrap
+    value: v1
+    target: group1
+    groups:
+      - [node1, node2, node3]
+      - [node4, node5, node6]
+
+  - at: 2s
+    action: partition
+    groups:
+      - [node1, node2]
+      - [node3, node4]
+      - [node5, node6]
+
+  - at: 2s
+    action: write
+    key: k_conflict_a
+    value: left_a
+    target: group1
+    groups:
+      - [node1, node2]
+      - [node3, node4]
+      - [node5, node6]
+
+  - at: 3s
+    action: write
+    key: k_conflict_a
+    value: mid_a
+    target: group2
+    groups:
+      - [node1, node2]
+      - [node3, node4]
+      - [node5, node6]
+
+  - at: 3s
+    action: write
+    key: k_conflict_b
+    value: right_b
+    target: group3
+    groups:
+      - [node1, node2]
+      - [node3, node4]
+      - [node5, node6]
+
+  - at: 5s
+    action: heal_partition
+    groups:
+      - [node1, node2]
+      - [node3, node4]
+      - [node5, node6]
+
+  - at: 6s
+    action: partition
+    groups:
+      - [node1, node3, node5]
+      - [node2, node4, node6]
+
+  - at: 6s
+    action: write
+    key: k_even_odd
+    value: odd_side
+    target: group1
+    groups:
+      - [node1, node3, node5]
+      - [node2, node4, node6]
+
+  - at: 7s
+    action: write
+    key: k_even_odd
+    value: even_side
+    target: group2
+    groups:
+      - [node1, node3, node5]
+      - [node2, node4, node6]
+
+  - at: 8s
+    action: heal_partition
+    groups:
+      - [node1, node3, node5]
+      - [node2, node4, node6]
+
+  - at: 10s
+    action: partition
+    groups:
+      - [node1]
+      - [node2, node3, node4, node5, node6]
+
+  - at: 10s
+    action: write
+    key: k_singleton
+    value: isolated_write
+    target: group1
+    groups:
+      - [node1]
+      - [node2, node3, node4, node5, node6]
+
+  - at: 11s
+    action: write
+    key: k_singleton
+    value: majority_write
+    target: group2
+    groups:
+      - [node1]
+      - [node2, node3, node4, node5, node6]
+
+  - at: 12s
+    action: heal_partition
+    groups:
+      - [node1]
+      - [node2, node3, node4, node5, node6]
+
+  # Out-of-order entries below are intentional; Normalize() should reorder by time.
+  - at: 15s
+    action: write
+    key: k_after_heal_3
+    value: late_3
+    target: group1
+    groups:
+      - [node1, node2, node3]
+      - [node4, node5, node6]
+
+  - at: 14s
+    action: write
+    key: k_after_heal_2
+    value: late_2
+    target: group2
+    groups:
+      - [node1, node2, node3]
+      - [node4, node5, node6]
+
+  - at: 13s
+    action: write
+    key: k_after_heal_1
+    value: late_1
+    target: group1
+    groups:
+      - [node1, node2, node3]
+      - [node4, node5, node6]
+
+  - at: 16s
+    action: partition
+    groups:
+      - [node1, node2, node3, node4]
+      - [node5, node6]
+
+  - at: 16s
+    action: write
+    key: k_tail_conflict
+    value: tail_majority
+    target: group1
+    groups:
+      - [node1, node2, node3, node4]
+      - [node5, node6]
+
+  - at: 17s
+    action: write
+    key: k_tail_conflict
+    value: tail_minor
+    target: group2
+    groups:
+      - [node1, node2, node3, node4]
+      - [node5, node6]
+
+  - at: 18s
+    action: heal_partition
+    groups:
+      - [node1, node2, node3, node4]
+      - [node5, node6]
+
+  - at: 19s
+    action: write
+    key: k_final_a
+    value: final_a
+    target: group1
+    groups:
+      - [node1, node2, node3]
+      - [node4, node5, node6]
+
+  - at: 19s
+    action: write
+    key: k_final_b
+    value: final_b
+    target: group2
+    groups:
+      - [node1, node2, node3]
+      - [node4, node5, node6]
+
+  - at: 20s
+    action: write
+    key: k_final_c
+    value: final_c
+    target: group1
+    groups:
+      - [node1, node2, node3]
+      - [node4, node5, node6]

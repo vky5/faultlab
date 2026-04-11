@@ -37,12 +37,16 @@ export function KVManager({ clusterId, nodeId }: KVManagerProps) {
     <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 space-y-4">
       <div className="flex items-center gap-2 mb-2">
         <Database className="w-4 h-4 text-primary" />
-        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">KV State Storage</h4>
+        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+          KV State Storage
+        </h4>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="text-[10px] font-medium text-slate-400 uppercase ml-1">Key Path</label>
+          <label className="text-[10px] font-medium text-slate-400 uppercase ml-1">
+            Key Path
+          </label>
           <div className="relative">
             <input
               type="text"
@@ -56,7 +60,9 @@ export function KVManager({ clusterId, nodeId }: KVManagerProps) {
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-[10px] font-medium text-slate-400 uppercase ml-1">Payload Value</label>
+          <label className="text-[10px] font-medium text-slate-400 uppercase ml-1">
+            Payload Value
+          </label>
           <input
             type="text"
             value={value}
@@ -73,7 +79,11 @@ export function KVManager({ clusterId, nodeId }: KVManagerProps) {
           disabled={loading || !key || !value}
           className="flex-1 bg-primary text-primary-foreground h-10 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
         >
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          {loading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Send className="w-4 h-4" />
+          )}
           Broadcast Update
         </button>
         <button
@@ -87,9 +97,13 @@ export function KVManager({ clusterId, nodeId }: KVManagerProps) {
 
       {lastValue !== null && (
         <div className="mt-4 p-3 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-          <div className="text-[10px] font-medium text-slate-400 uppercase mb-1">Last Resolved State</div>
+          <div className="text-[10px] font-medium text-slate-400 uppercase mb-1">
+            Last Resolved State
+          </div>
           <div className="font-mono text-sm text-primary break-all">
-            {lastValue || <span className="text-slate-500 italic">Empty/Not set</span>}
+            {lastValue || (
+              <span className="text-slate-500 italic">Empty/Not set</span>
+            )}
           </div>
         </div>
       )}

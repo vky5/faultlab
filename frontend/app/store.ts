@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create } from "zustand";
 
 export type NodeInfo = {
   id: string;
@@ -26,12 +26,12 @@ export type ClusterInfo = {
   nodes: NodeInfo[];
 };
 
-export type Role = 'follower' | 'candidate' | 'leader';
+export type Role = "follower" | "candidate" | "leader";
 
 export interface NodeRaftState {
   role: Role;
   term: number;
-  timerProgress: number; 
+  timerProgress: number;
   votesReceived: Set<string>;
   votedFor: string | null;
   timeoutLimit: number;
@@ -48,6 +48,29 @@ export interface SimulatedMessage {
   metadata?: string;
   sizeBytes?: number;
   timestampMs?: number;
+}
+
+export interface DivergencePoint {
+  Time: number; 
+  Divergence: number;
+}
+
+export interface MetricsResult {
+  ConvergenceTime?: number;
+  FirstAgreementTime?: number;
+  FinalConsistent: boolean;
+  PeakDivergence: number;
+  AreaUnderDivergence: number;
+  DivergenceOverTime: DivergencePoint[];
+  StaleDurationPerNode: Record<string, number>;
+}
+
+export interface MetricsSnapshot {
+  clusterId: string;
+  startedAt: string;
+  stoppedAt?: string;
+  trackedKeys: string[];
+  results: Record<string, MetricsResult>;
 }
 
 const API_BASE = "http://localhost:8080/api";
@@ -71,18 +94,34 @@ interface ClusterStore {
   selectedMessageId: string | null;
   raftState: Record<string, NodeRaftState>;
   messages: SimulatedMessage[];
-  lastGossipTime: number; 
+  lastGossipTime: number;
 
   fetchClusters: () => Promise<void>;
   setSelectedClusterId: (id: string | null) => void;
   handleCrashNode: (clusterId: string, nodeId: string) => Promise<void>;
   handleRecoverNode: (clusterId: string, nodeId: string) => Promise<void>;
   handleRemoveNode: (clusterId: string, nodeId: string) => Promise<void>;
-  handleAddNode: (clusterId: string, payload: { node_id: string; address: string; port: number }) => Promise<boolean>;
+  handleAddNode: (
+    clusterId: string,
+    payload: { node_id: string; address: string; port: number },
+  ) => Promise<boolean>;
   handleCreateCluster: (id: string, protocol: string) => Promise<boolean>;
-  handleSetDropRate: (clusterId: string, nodeId: string, dropRate: number) => Promise<boolean>;
-  handleSetDelay: (clusterId: string, nodeId: string, delayMs: number) => Promise<boolean>;
-  handleSetPartition: (clusterId: string, nodeId: string, peerId: string, enabled: boolean) => Promise<boolean>;
+  handleSetDropRate: (
+    clusterId: string,
+    nodeId: string,
+    dropRate: number,
+  ) => Promise<boolean>;
+  handleSetDelay: (
+    clusterId: string,
+    nodeId: string,
+    delayMs: number,
+  ) => Promise<boolean>;
+  handleSetPartition: (
+    clusterId: string,
+    nodeId: string,
+    peerId: string,
+    enabled: boolean,
+  ) => Promise<boolean>;
   toggleTimers: () => void;
   toggleControlPlane: () => void;
   getNodeStatus: (node: NodeInfo) => "active" | "crashed";
@@ -96,15 +135,34 @@ interface ClusterStore {
   connectLiveStream: (clusterId: string) => void;
   disconnectLiveStream: () => void;
 
-  handleKVPut: (clusterId: string, nodeId: string, key: string, value: string) => Promise<boolean>;
-  handleKVGet: (clusterId: string, nodeId: string, key: string) => Promise<string | null>;
+  handleKVPut: (
+    clusterId: string,
+    nodeId: string,
+    key: string,
+    value: string,
+  ) => Promise<boolean>;
+  handleKVGet: (
+    clusterId: string,
+    nodeId: string,
+    key: string,
+  ) => Promise<string | null>;
   handleSwapProtocol: (clusterId: string, protocol: string) => Promise<boolean>;
   initSimulationData: () => void;
+
+  showMetrics: boolean;
+  setShowMetrics: (show: boolean) => void;
+  metrics: MetricsSnapshot | null;
+  handleStartMetrics: (clusterId: string, intervalMs: number) => Promise<void>;
+  handleStopMetrics: (clusterId: string) => Promise<void>;
+  handleWatchKey: (clusterId: string, key: string) => Promise<void>;
+  fetchMetricsSnapshot: (clusterId: string) => Promise<void>;
 }
 
 let activeEventSource: EventSource | null = null;
 
-const getRandomTimeout = () => ELECTION_TIMEOUT_MIN + Math.random() * (ELECTION_TIMEOUT_MAX - ELECTION_TIMEOUT_MIN);
+const getRandomTimeout = () =>
+  ELECTION_TIMEOUT_MIN +
+  Math.random() * (ELECTION_TIMEOUT_MAX - ELECTION_TIMEOUT_MIN);
 const nextId = () => Math.random().toString(36).substring(2, 9);
 
 export const useClusterStore = create<ClusterStore>((set, get) => ({
@@ -122,20 +180,49 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
   kvStore: {},
   lastGossipTime: 0,
   isLiveMode: true,
+  showMetrics: false,
+  metrics: null,
 
   setLiveMode: (live) => set({ isLiveMode: live }),
+  setShowMetrics: (show) => set({ showMetrics: show }),
 
   initSimulationData: () => {
     if (get().clusters.length === 0) {
+      const currentSelected = get().selectedClusterId;
       set({
         clusters: [
-          { id: "sim-cluster", protocol: "gossip", nodes: [
-            { id: "node-1", address: "local", port: 8001, status: "active", activeProtocolKey: "gossip", capabilities: { kvPut: true, kvGet: true, kvDelete: true } },
-            { id: "node-2", address: "local", port: 8002, status: "active", activeProtocolKey: "gossip", capabilities: { kvPut: true, kvGet: true, kvDelete: true } },
-            { id: "node-3", address: "local", port: 8003, status: "active", activeProtocolKey: "gossip", capabilities: { kvPut: true, kvGet: true, kvDelete: true } },
-          ]}
-        ],
-        selectedClusterId: "sim-cluster"
+          {
+            id: "sim-cluster",
+            protocol: "gossip",
+            nodes: [
+              {
+                id: "node-1",
+                address: "local",
+                port: 8001,
+                status: "active",
+                activeProtocolKey: "gossip",
+                capabilities: { kvPut: true, kvGet: true, kvDelete: true },
+              },
+              {
+                id: "node-2",
+                address: "local",
+                port: 8002,
+                status: "active",
+                activeProtocolKey: "gossip",
+                capabilities: { kvPut: true, kvGet: true, kvDelete: true },
+              },
+              {
+                id: "node-3",
+                address: "local",
+                port: 8003,
+                status: "active",
+                activeProtocolKey: "gossip",
+                capabilities: { kvPut: true, kvGet: true, kvDelete: true },
+              },
+            ],
+          },
+        ].sort((a: any, b: any) => a.id.localeCompare(b.id)),
+        selectedClusterId: currentSelected || "sim-cluster",
       });
       get().initRaftState();
     }
@@ -153,20 +240,26 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
       if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}`);
       }
-      
+
       const data = await res.json();
       set((state) => {
-        const firstId = !state.selectedClusterId && data && data.length > 0 ? data[0].id : state.selectedClusterId;
-        
-        if (firstId && !state.selectedClusterId) {
-          // New selection on initial load, connect
+        const isInitialLoad = !state.selectedClusterId;
+        const firstId =
+          isInitialLoad && data && data.length > 0
+            ? data[0].id
+            : state.selectedClusterId;
+
+        if (isInitialLoad && firstId) {
+          // Only auto-connect on the very first load when no selection exists
           setTimeout(() => get().connectLiveStream(firstId), 0);
         }
 
+        const sortedData = (data || []).sort((a: any, b: any) => a.id.localeCompare(b.id));
+
         return {
-          clusters: data || [],
+          clusters: sortedData,
           selectedClusterId: firstId,
-          isLiveMode: true
+          isLiveMode: true,
         };
       });
     } catch (err) {
@@ -188,15 +281,20 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
     set((state) => ({
       localStatuses: { ...state.localStatuses, [nodeId]: "crashed" },
       // Remove any in-flight messages from this crashed node
-      messages: state.messages.filter(msg => msg.sourceId !== nodeId && msg.targetId !== nodeId)
+      messages: state.messages.filter(
+        (msg) => msg.sourceId !== nodeId && msg.targetId !== nodeId,
+      ),
     }));
 
     if (!get().isLiveMode) return;
-    
+
     try {
-      const res = await fetch(`${API_BASE}/clusters/${clusterId}/nodes/${nodeId}/faults/crash`, {
-        method: "POST",
-      });
+      const res = await fetch(
+        `${API_BASE}/clusters/${clusterId}/nodes/${nodeId}/faults/crash`,
+        {
+          method: "POST",
+        },
+      );
       if (res.ok) {
         get().fetchClusters();
       }
@@ -209,25 +307,28 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
     set((state) => {
       const newRaft = { ...state.raftState };
       newRaft[nodeId] = {
-        role: 'follower',
+        role: "follower",
         term: newRaft[nodeId]?.term || 0,
         timerProgress: 0,
         votesReceived: new Set(),
         votedFor: null,
-        timeoutLimit: getRandomTimeout()
+        timeoutLimit: getRandomTimeout(),
       };
       return {
         localStatuses: { ...state.localStatuses, [nodeId]: "active" },
-        raftState: newRaft
+        raftState: newRaft,
       };
     });
 
     if (!get().isLiveMode) return;
 
     try {
-      const res = await fetch(`${API_BASE}/clusters/${clusterId}/nodes/${nodeId}/faults/recover`, {
-        method: "POST",
-      });
+      const res = await fetch(
+        `${API_BASE}/clusters/${clusterId}/nodes/${nodeId}/faults/recover`,
+        {
+          method: "POST",
+        },
+      );
       if (res.ok) {
         get().fetchClusters();
       }
@@ -239,16 +340,21 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
   handleRemoveNode: async (clusterId, nodeId) => {
     if (!get().isLiveMode) {
       set((state) => ({
-        clusters: state.clusters.map(c => 
-          c.id === clusterId ? { ...c, nodes: c.nodes.filter(n => n.id !== nodeId) } : c
-        )
+        clusters: state.clusters.map((c) =>
+          c.id === clusterId
+            ? { ...c, nodes: c.nodes.filter((n) => n.id !== nodeId) }
+            : c,
+        ),
       }));
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/clusters/${clusterId}/nodes/${nodeId}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(
+        `${API_BASE}/clusters/${clusterId}/nodes/${nodeId}`,
+        {
+          method: "DELETE",
+        },
+      );
       if (res.ok) {
         get().fetchClusters();
       }
@@ -260,16 +366,24 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
   handleAddNode: async (clusterId, payload) => {
     if (!get().isLiveMode) {
       set((state) => ({
-        clusters: state.clusters.map(c => 
-          c.id === clusterId ? { ...c, nodes: [...c.nodes, { 
-            id: payload.node_id, 
-            address: payload.address, 
-            port: payload.port, 
-            status: "active",
-            activeProtocolKey: c.protocol,
-            capabilities: { kvPut: true, kvGet: true, kvDelete: true }
-          }] } : c
-        )
+        clusters: state.clusters.map((c) =>
+          c.id === clusterId
+            ? {
+                ...c,
+                nodes: [
+                  ...c.nodes,
+                  {
+                    id: payload.node_id,
+                    address: payload.address,
+                    port: payload.port,
+                    status: "active",
+                    activeProtocolKey: c.protocol,
+                    capabilities: { kvPut: true, kvGet: true, kvDelete: true },
+                  },
+                ],
+              }
+            : c,
+        ),
       }));
       get().initRaftState();
       return true;
@@ -296,7 +410,7 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
     if (!get().isLiveMode) {
       set((state) => ({
         clusters: [...state.clusters, { id, protocol, nodes: [] }],
-        selectedClusterId: id
+        selectedClusterId: id,
       }));
       get().initRaftState();
       return true;
@@ -323,20 +437,30 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
   handleSetDropRate: async (clusterId, nodeId, dropRate) => {
     if (!get().isLiveMode) {
       set((state) => ({
-        clusters: state.clusters.map(c => 
-          c.id === clusterId ? { ...c, nodes: c.nodes.map(n => 
-            n.id === nodeId ? { ...n, fault: { ...n.fault!, dropRate } } : n
-          ) } : c
-        )
+        clusters: state.clusters.map((c) =>
+          c.id === clusterId
+            ? {
+                ...c,
+                nodes: c.nodes.map((n) =>
+                  n.id === nodeId
+                    ? { ...n, fault: { ...n.fault!, dropRate } }
+                    : n,
+                ),
+              }
+            : c,
+        ),
       }));
       return true;
     }
     try {
-      const res = await fetch(`${API_BASE}/clusters/${clusterId}/nodes/${nodeId}/faults/drop-rate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ drop_rate: dropRate }),
-      });
+      const res = await fetch(
+        `${API_BASE}/clusters/${clusterId}/nodes/${nodeId}/faults/drop-rate`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ drop_rate: dropRate }),
+        },
+      );
       if (!res.ok) return false;
       await get().fetchClusters();
       return true;
@@ -349,20 +473,30 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
   handleSetDelay: async (clusterId, nodeId, delayMs) => {
     if (!get().isLiveMode) {
       set((state) => ({
-        clusters: state.clusters.map(c => 
-          c.id === clusterId ? { ...c, nodes: c.nodes.map(n => 
-            n.id === nodeId ? { ...n, fault: { ...n.fault!, delayMs } } : n
-          ) } : c
-        )
+        clusters: state.clusters.map((c) =>
+          c.id === clusterId
+            ? {
+                ...c,
+                nodes: c.nodes.map((n) =>
+                  n.id === nodeId
+                    ? { ...n, fault: { ...n.fault!, delayMs } }
+                    : n,
+                ),
+              }
+            : c,
+        ),
       }));
       return true;
     }
     try {
-      const res = await fetch(`${API_BASE}/clusters/${clusterId}/nodes/${nodeId}/faults/delay`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ delay_ms: delayMs }),
-      });
+      const res = await fetch(
+        `${API_BASE}/clusters/${clusterId}/nodes/${nodeId}/faults/delay`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ delay_ms: delayMs }),
+        },
+      );
       if (!res.ok) return false;
       await get().fetchClusters();
       return true;
@@ -375,35 +509,64 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
   handleSetPartition: async (clusterId, nodeId, peerId, enabled) => {
     if (!get().isLiveMode) {
       set((state) => ({
-        clusters: state.clusters.map(c => 
-          c.id === clusterId ? {
-            ...c,
-            nodes: c.nodes.map(n => {
-              // Symmetric update in simulation mode
-              if (n.id === nodeId) {
-                const p = n.fault?.partition || [];
-                const next = enabled ? Array.from(new Set([...p, peerId])) : p.filter(id => id !== peerId);
-                return { ...n, fault: { ...(n.fault || { crashed: false, dropRate: 0, delayMs: 0 }), partition: next } };
+        clusters: state.clusters.map((c) =>
+          c.id === clusterId
+            ? {
+                ...c,
+                nodes: c.nodes.map((n) => {
+                  // Symmetric update in simulation mode
+                  if (n.id === nodeId) {
+                    const p = n.fault?.partition || [];
+                    const next = enabled
+                      ? Array.from(new Set([...p, peerId]))
+                      : p.filter((id) => id !== peerId);
+                    return {
+                      ...n,
+                      fault: {
+                        ...(n.fault || {
+                          crashed: false,
+                          dropRate: 0,
+                          delayMs: 0,
+                        }),
+                        partition: next,
+                      },
+                    };
+                  }
+                  if (n.id === peerId) {
+                    const p = n.fault?.partition || [];
+                    const next = enabled
+                      ? Array.from(new Set([...p, nodeId]))
+                      : p.filter((id) => id !== nodeId);
+                    return {
+                      ...n,
+                      fault: {
+                        ...(n.fault || {
+                          crashed: false,
+                          dropRate: 0,
+                          delayMs: 0,
+                        }),
+                        partition: next,
+                      },
+                    };
+                  }
+                  return n;
+                }),
               }
-              if (n.id === peerId) {
-                const p = n.fault?.partition || [];
-                const next = enabled ? Array.from(new Set([...p, nodeId])) : p.filter(id => id !== nodeId);
-                return { ...n, fault: { ...(n.fault || { crashed: false, dropRate: 0, delayMs: 0 }), partition: next } };
-              }
-              return n;
-            })
-          } : c
-        )
+            : c,
+        ),
       }));
       return true;
     }
 
     try {
-      const res = await fetch(`${API_BASE}/clusters/${clusterId}/nodes/${nodeId}/faults/partition`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ peer_id: peerId, enabled }),
-      });
+      const res = await fetch(
+        `${API_BASE}/clusters/${clusterId}/nodes/${nodeId}/faults/partition`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ peer_id: peerId, enabled }),
+        },
+      );
       if (!res.ok) return false;
       await get().fetchClusters();
       return true;
@@ -414,7 +577,8 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
   },
 
   toggleTimers: () => set((state) => ({ showTimers: !state.showTimers })),
-  toggleControlPlane: () => set((state) => ({ showControlPlane: !state.showControlPlane })),
+  toggleControlPlane: () =>
+    set((state) => ({ showControlPlane: !state.showControlPlane })),
 
   toggleSimulation: () => {
     const running = !get().isSimulationRunning;
@@ -435,18 +599,18 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
 
   initRaftState: () => {
     const { clusters, selectedClusterId } = get();
-    const cluster = clusters.find(c => c.id === selectedClusterId);
+    const cluster = clusters.find((c) => c.id === selectedClusterId);
     if (!cluster) return;
 
     const newRaftState: Record<string, NodeRaftState> = {};
-    cluster.nodes.forEach(n => {
+    cluster.nodes.forEach((n) => {
       newRaftState[n.id] = {
-        role: 'follower',
+        role: "follower",
         term: 0,
         timerProgress: 0,
         votesReceived: new Set(),
         votedFor: null,
-        timeoutLimit: getRandomTimeout()
+        timeoutLimit: getRandomTimeout(),
       };
     });
     set({ raftState: newRaftState });
@@ -461,7 +625,9 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
     get().disconnectLiveStream();
 
     console.log("[SSE] Connecting to logs stream for cluster:", clusterId);
-    activeEventSource = new EventSource(`${API_BASE}/clusters/${clusterId}/logs`);
+    activeEventSource = new EventSource(
+      `${API_BASE}/clusters/${clusterId}/logs`,
+    );
 
     activeEventSource.onopen = () => {
       console.log("[SSE] Connection opened");
@@ -470,31 +636,35 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
     activeEventSource.onmessage = (event) => {
       try {
         // DISCARD messages if tab is hidden to prevent background backlog accumulation
-        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        if (
+          typeof document !== "undefined" &&
+          document.visibilityState === "hidden"
+        ) {
           return;
         }
 
         const log = JSON.parse(event.data);
         const rawMsg = log.message || log.Message || "";
-        
+
         if (rawMsg.includes("TRACE:SEND:")) {
           if (get().isPaused) return; // Skip if paused
-          
+
           const parts = rawMsg.split(":");
           if (parts.length >= 4) {
             const sourceId = parts[2]?.trim();
             const targetId = parts[3]?.trim();
-            const msgType = parts[4]?.trim() || 'heartbeat';
+            const msgType = parts[4]?.trim() || "heartbeat";
             const metadata = parts[5]?.trim();
-            const sizeBytes = parseInt(parts[6]?.trim() || '0', 10);
-            
+            const sizeBytes = parseInt(parts[6]?.trim() || "0", 10);
+
             // Check if source node is crashed - don't show messages from dead nodes
             const { localStatuses, clusters } = get();
             if (sourceId !== "CP") {
-              const cluster = clusters.find(c => c.id === clusterId);
-              const sourceNode = cluster?.nodes?.find(n => n.id === sourceId);
-              const sourceStatus = localStatuses[sourceId] || sourceNode?.status || "active";
-              
+              const cluster = clusters.find((c) => c.id === clusterId);
+              const sourceNode = cluster?.nodes?.find((n) => n.id === sourceId);
+              const sourceStatus =
+                localStatuses[sourceId] || sourceNode?.status || "active";
+
               if (sourceStatus === "crashed") {
                 return;
               }
@@ -509,7 +679,8 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
               progress: 0,
               metadata,
               sizeBytes,
-              timestampMs: (log.timestamp || log.Timestamp || Date.now() / 1000) * 1000
+              timestampMs:
+                (log.timestamp || log.Timestamp || Date.now() / 1000) * 1000,
             };
 
             set((state) => {
@@ -518,7 +689,10 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
               const MAX_MESSAGES = 200;
               const newMessages = [...state.messages, msg];
               return {
-                messages: newMessages.length > MAX_MESSAGES ? newMessages.slice(-MAX_MESSAGES) : newMessages
+                messages:
+                  newMessages.length > MAX_MESSAGES
+                    ? newMessages.slice(-MAX_MESSAGES)
+                    : newMessages,
               };
             });
           }
@@ -549,7 +723,7 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
     const newMessages = [...state.messages];
     const inFlightMessages: SimulatedMessage[] = [];
 
-    newMessages.forEach(msg => {
+    newMessages.forEach((msg) => {
       msg.progress += deltaMs * MESSAGE_SPEED;
       if (msg.progress < 1) {
         inFlightMessages.push(msg);
@@ -559,17 +733,21 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
     // 2. Background Gossip heartbeats (every 3 seconds)
     let nextGossipTime = state.lastGossipTime;
     if (!state.isLiveMode) {
-      const cluster = state.clusters.find(c => c.id === state.selectedClusterId);
+      const cluster = state.clusters.find(
+        (c) => c.id === state.selectedClusterId,
+      );
       if (cluster && cluster.protocol === "gossip") {
         const GOSSIP_TICK_INTERVAL = 3000;
         const now = Date.now();
-        
+
         if (now - state.lastGossipTime > GOSSIP_TICK_INTERVAL) {
           nextGossipTime = now;
-          const activeNodes = cluster.nodes.filter(n => n.status !== "crashed");
-          
-          activeNodes.forEach(node => {
-            const peers = activeNodes.filter(n => n.id !== node.id);
+          const activeNodes = cluster.nodes.filter(
+            (n) => n.status !== "crashed",
+          );
+
+          activeNodes.forEach((node) => {
+            const peers = activeNodes.filter((n) => n.id !== node.id);
             if (peers.length > 0) {
               const target = peers[Math.floor(Math.random() * peers.length)];
               const digestMsg: SimulatedMessage = {
@@ -580,7 +758,7 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
                 progress: 0,
                 term: 0,
                 metadata: `DIGEST (Periodic)`,
-                timestampMs: now
+                timestampMs: now,
               };
               inFlightMessages.push(digestMsg);
             }
@@ -592,7 +770,12 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
     set({ messages: inFlightMessages, lastGossipTime: nextGossipTime });
   },
 
-  handleKVPut: async (clusterId: string, nodeId: string, key: string, value: string) => {
+  handleKVPut: async (
+    clusterId: string,
+    nodeId: string,
+    key: string,
+    value: string,
+  ) => {
     if (!get().isLiveMode) {
       // Simulation Logic
       set((state) => {
@@ -600,12 +783,12 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
         const nodeKV: any = clusterKV[nodeId] || {};
         const updatedNodeKV = { ...nodeKV, [key]: value };
         const updatedClusterKV = { ...clusterKV, [nodeId]: updatedNodeKV };
-        
+
         return {
           kvStore: {
             ...state.kvStore,
-            [clusterId]: updatedClusterKV
-          }
+            [clusterId]: updatedClusterKV,
+          },
         };
       });
 
@@ -618,21 +801,25 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
         progress: 0,
         term: 0,
         metadata: `PUT ${key}=${value}`,
-        timestampMs: Date.now()
+        timestampMs: Date.now(),
       };
 
       set((state) => ({ messages: [...state.messages, cpMsg] }));
 
       // 2. Gossip propagation if applicable
-      const cluster = get().clusters.find(c => c.id === clusterId);
+      const cluster = get().clusters.find((c) => c.id === clusterId);
       if (cluster && cluster.protocol === "gossip") {
-        const peers = cluster.nodes.filter(n => n.id !== nodeId && n.status !== "crashed");
+        const peers = cluster.nodes.filter(
+          (n) => n.id !== nodeId && n.status !== "crashed",
+        );
         if (peers.length > 0) {
           // Send to 1-2 random peers
-          const gossipTargets = peers.sort(() => 0.5 - Math.random()).slice(0, 2);
-          
+          const gossipTargets = peers
+            .sort(() => 0.5 - Math.random())
+            .slice(0, 2);
+
           setTimeout(() => {
-            gossipTargets.forEach(target => {
+            gossipTargets.forEach((target) => {
               const digestMsg: SimulatedMessage = {
                 id: nextId(),
                 sourceId: nodeId,
@@ -641,7 +828,7 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
                 progress: 0,
                 term: 0,
                 metadata: `DIGEST [${key}]`,
-                timestampMs: Date.now()
+                timestampMs: Date.now(),
               };
               set((state) => ({ messages: [...state.messages, digestMsg] }));
 
@@ -655,7 +842,7 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
                   progress: 0,
                   term: 0,
                   metadata: `STATE [${key}=${value}]`,
-                  timestampMs: Date.now()
+                  timestampMs: Date.now(),
                 };
                 set((state) => ({ messages: [...state.messages, stateMsg] }));
               }, 1200);
@@ -668,11 +855,14 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
     }
 
     try {
-      const res = await fetch(`${API_BASE}/clusters/${clusterId}/nodes/${nodeId}/kv`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, value }),
-      });
+      const res = await fetch(
+        `${API_BASE}/clusters/${clusterId}/nodes/${nodeId}/kv`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key, value }),
+        },
+      );
       return res.ok;
     } catch (err) {
       console.error(err);
@@ -691,7 +881,7 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
         progress: 0,
         term: 0,
         metadata: `GET ${key}`,
-        timestampMs: Date.now()
+        timestampMs: Date.now(),
       };
       set((state) => ({ messages: [...state.messages, cpMsg] }));
 
@@ -704,7 +894,9 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
     }
 
     try {
-      const res = await fetch(`${API_BASE}/clusters/${clusterId}/nodes/${nodeId}/kv/${key}`);
+      const res = await fetch(
+        `${API_BASE}/clusters/${clusterId}/nodes/${nodeId}/kv/${key}`,
+      );
       if (res.ok) {
         const data = await res.json();
         return data.value;
@@ -718,9 +910,18 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
   handleSwapProtocol: async (clusterId: string, protocol: string) => {
     if (!get().isLiveMode) {
       set((state) => ({
-        clusters: state.clusters.map(c => 
-          c.id === clusterId ? { ...c, protocol, nodes: c.nodes.map(n => ({ ...n, activeProtocolKey: protocol })) } : c
-        )
+        clusters: state.clusters.map((c) =>
+          c.id === clusterId
+            ? {
+                ...c,
+                protocol,
+                nodes: c.nodes.map((n) => ({
+                  ...n,
+                  activeProtocolKey: protocol,
+                })),
+              }
+            : c,
+        ),
       }));
       return true;
     }
@@ -739,5 +940,63 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
       console.error("Failed to swap protocol:", err);
       return false;
     }
-  }
+  },
+
+  handleStartMetrics: async (clusterId, intervalMs) => {
+    try {
+      const res = await fetch(`${API_BASE}/clusters/${clusterId}/metrics/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interval_ms: intervalMs }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        set({ metrics: data });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  },
+
+  handleStopMetrics: async (clusterId) => {
+    try {
+      const res = await fetch(`${API_BASE}/clusters/${clusterId}/metrics/stop`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        set({ metrics: data });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  },
+
+  handleWatchKey: async (clusterId, key) => {
+    try {
+      const res = await fetch(`${API_BASE}/clusters/${clusterId}/metrics/watch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        set({ metrics: data });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  },
+
+  fetchMetricsSnapshot: async (clusterId) => {
+    try {
+      const res = await fetch(`${API_BASE}/clusters/${clusterId}/metrics`);
+      if (res.ok) {
+        const data = await res.json();
+        set({ metrics: data });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  },
 }));

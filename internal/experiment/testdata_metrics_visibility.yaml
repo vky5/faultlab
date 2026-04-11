@@ -1,0 +1,143 @@
+name: metrics_visibility
+
+cluster:
+  id: metrics_visibility_cluster
+  members:
+    - id: mv1
+      port: 7301
+    - id: mv2
+      port: 7302
+    - id: mv3
+      port: 7303
+    - id: mv4
+      port: 7304
+    - id: mv5
+      port: 7305
+
+# Designed for clearer metrics output with current strict sampler behavior:
+# - Fewer keys
+# - Longer windows between writes
+# - One main conflict key (x) + one mostly-stable key (y)
+timeline:
+  - at: 0s
+    action: start_cluster
+
+  # Seed keys early so sampler can observe them on more ticks.
+  - at: 2s
+    action: write
+    key: x
+    value: seed_x
+    target: group1
+    groups:
+      - [mv1, mv2, mv3, mv4, mv5]
+
+  - at: 3s
+    action: write
+    key: y
+    value: seed_y
+    target: group1
+    groups:
+      - [mv1, mv2, mv3, mv4, mv5]
+
+  # Give time for normal propagation before introducing partition.
+  - at: 6s
+    action: partition
+    groups:
+      - [mv1, mv2]
+      - [mv3, mv4, mv5]
+
+  # Conflicting writes for x during partition (drives divergence).
+  - at: 7s
+    action: write
+    key: x
+    value: left_x_v1
+    target: group1
+    groups:
+      - [mv1, mv2]
+      - [mv3, mv4, mv5]
+
+  - at: 8s
+    action: write
+    key: x
+    value: right_x_v2
+    target: group2
+    groups:
+      - [mv1, mv2]
+      - [mv3, mv4, mv5]
+
+  # Update y only on one side to observe lower/noisy divergence on y.
+  - at: 9s
+    action: write
+    key: y
+    value: right_y_v2
+    target: group2
+    groups:
+      - [mv1, mv2]
+      - [mv3, mv4, mv5]
+
+  # Long partition window so divergence has time-area to accumulate.
+  - at: 14s
+    action: heal_partition
+    groups:
+      - [mv1, mv2]
+      - [mv3, mv4, mv5]
+
+  # Post-heal canonical writes to encourage eventual convergence.
+  - at: 18s
+    action: write
+    key: x
+    value: final_x
+    target: group2
+    groups:
+      - [mv1, mv2]
+      - [mv3, mv4, mv5]
+
+  - at: 19s
+    action: write
+    key: y
+    value: final_y
+    target: group1
+    groups:
+      - [mv1, mv2]
+      - [mv3, mv4, mv5]
+
+  # Short second disruption to produce another visible bump.
+  - at: 22s
+    action: partition
+    groups:
+      - [mv1, mv3, mv5]
+      - [mv2, mv4]
+
+  - at: 23s
+    action: write
+    key: x
+    value: odd_x
+    target: group1
+    groups:
+      - [mv1, mv3, mv5]
+      - [mv2, mv4]
+
+  - at: 24s
+    action: heal_partition
+    groups:
+      - [mv1, mv3, mv5]
+      - [mv2, mv4]
+
+  # Final settle write and cool-down window.
+  - at: 27s
+    action: write
+    key: x
+    value: settle_x
+    target: group2
+    groups:
+      - [mv1, mv3, mv5]
+      - [mv2, mv4]
+
+  - at: 32s
+    action: write
+    key: y
+    value: settle_y
+    target: group1
+    groups:
+      - [mv1, mv3, mv5]
+      - [mv2, mv4]

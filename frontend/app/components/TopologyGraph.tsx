@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
-import { Activity, Cpu, Crown, Server, Zap } from "lucide-react";
+import { Activity, Cpu, Crown, Server, Zap, BarChart3 } from "lucide-react";
 import { motion, AnimatePresence, useAnimation } from "framer-motion";
 import * as d3Force from "d3-force";
 import * as d3Zoom from "d3-zoom";
 import * as d3Select from "d3-selection";
 import { NodeInfo, useClusterStore } from "../store";
+import { MetricsPanel } from "./MetricsPanel";
 
 const d3 = { ...d3Force, ...d3Zoom, ...d3Select };
 
@@ -20,7 +21,7 @@ interface SimEdge extends d3.SimulationLinkDatum<SimNode> {
 export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ w: 0, h: 0 });
-  const { raftState, messages, isSimulationRunning, isPaused, showControlPlane, toggleControlPlane } = useClusterStore();
+  const { raftState, messages, isSimulationRunning, isPaused, showControlPlane, toggleControlPlane, showMetrics, setShowMetrics } = useClusterStore();
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
   const [simNodes, setSimNodes] = useState<SimNode[]>([]);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -31,6 +32,7 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
 
   const simulation = useRef<d3.Simulation<SimNode, undefined> | null>(null);
   const zoomBehavior = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  const dragInfo = useRef<{ id: string; startX: number; startY: number; nodeX: number; nodeY: number } | null>(null);
 
   // Initialize Zoom behavior
   useEffect(() => {
@@ -65,14 +67,12 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
   // Initialize simulation
   useEffect(() => {
     simulation.current = d3.forceSimulation<SimNode>()
-      .force("charge", d3.forceManyBody().strength(-400))
+      .force("charge", d3.forceManyBody().strength(-300))
       .force("center", d3.forceCenter(centerX, centerY))
-      .force("x", d3.forceX(centerX).strength(0.08))
-      .force("y", d3.forceY(centerY).strength(0.08))
-      .force("collision", d3.forceCollide<SimNode>().radius(100))
-      .alphaDecay(0.0228) // Slightly slower decay for smoother settling
+      .force("radial", d3.forceRadial(220, centerX, centerY).strength(0.8))
+      .force("collision", d3.forceCollide<SimNode>().radius(85))
+      .alphaDecay(0.02) 
       .on("tick", () => {
-        // Use functional update to avoid capturing stale state, but keep it stable
         setSimNodes(prev => [...prev]); 
       });
 
@@ -87,27 +87,41 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
 
     setSimNodes(prev => {
       let changed = false;
-      const newSimNodes = nodes.map(node => {
+      
+      // Build basic node list from props
+      const nodeData: any[] = [...nodes];
+      
+      // Add Control Plane as a virtual node in simulation if visible
+      if (showControlPlane) {
+        nodeData.push({ id: "CP", status: "active", isHub: true });
+      }
+
+      const newSimNodes = nodeData.map(node => {
         const existing = prev.find(p => p.id === node.id);
         if (existing) {
-          // Update the underlying node info but preserve the simulation object (x, y, vx, vy)
-          if (existing.node !== node) {
-            existing.node = node;
-            changed = true;
+          existing.node = node;
+          // Fix CP position to center
+          if (node.id === "CP") {
+            existing.fx = centerX;
+            existing.fy = centerY;
           }
           return existing;
         }
         changed = true;
+        const initialX = node.id === "CP" ? centerX : centerX + (Math.random() - 0.5) * 100;
+        const initialY = node.id === "CP" ? centerY : centerY + (Math.random() - 0.5) * 100;
+        
         return {
           id: node.id,
           node: node,
-          x: centerX + (Math.random() - 0.5) * 50,
-          y: centerY + (Math.random() - 0.5) * 50,
+          x: initialX,
+          y: initialY,
+          fx: node.id === "CP" ? centerX : undefined,
+          fy: node.id === "CP" ? centerY : undefined,
         };
       });
 
-      // Also check if any nodes were removed
-      if (prev.length !== nodes.length) changed = true;
+      if (prev.length !== nodeData.length) changed = true;
       
       if (changed) {
         simulation.current?.nodes(newSimNodes);
@@ -116,7 +130,7 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
       }
       return prev;
     });
-  }, [nodes, centerX, centerY]);
+  }, [nodes, centerX, centerY, showControlPlane]);
 
   // Update center forces when dimensions change
   useEffect(() => {
@@ -200,29 +214,48 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
   }
 
   // Handle node dragging
-  const handleDragStart = (id: string, x: number, y: number) => {
+  const getSVGPoint = (clientX: number, clientY: number) => {
+    if (!svgRef.current) return { x: 0, y: 0 };
+    const svg = svgRef.current;
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    return pt.matrixTransform(svg.getScreenCTM()?.inverse());
+  };
+
+  const handleDragStart = (id: string, clientX: number, clientY: number) => {
     const node = simNodes.find(n => n.id === id);
     if (node) {
-      node.fx = x;
-      node.fy = y;
+      const pt = getSVGPoint(clientX, clientY);
+      dragInfo.current = { 
+        id, 
+        startX: pt.x, 
+        startY: pt.y, 
+        nodeX: node.fx !== undefined ? node.fx : (node.x || 0), 
+        nodeY: node.fy !== undefined ? node.fy : (node.y || 0) 
+      };
+      node.fx = node.x;
+      node.fy = node.y;
       simulation.current?.alphaTarget(0.3).restart();
     }
   };
 
-  const handleDrag = (id: string, dx: number, dy: number) => {
+  const handleDrag = (clientX: number, clientY: number) => {
+    if (!dragInfo.current) return;
+    const { id, startX, startY, nodeX, nodeY } = dragInfo.current;
     const node = simNodes.find(n => n.id === id);
     if (node) {
-      // Divide by transform.k to maintain cursor-to-node alignment when zoomed
-      node.fx = (node.fx || 0) + dx / transform.k;
-      node.fy = (node.fy || 0) + dy / transform.k;
+      const pt = getSVGPoint(clientX, clientY);
+      const dx = pt.x - startX;
+      const dy = pt.y - startY;
+      node.fx = nodeX + dx;
+      node.fy = nodeY + dy;
     }
   };
 
-  const handleDragEnd = (id: string) => {
-    const node = simNodes.find(n => n.id === id);
-    if (node) {
-      node.fx = null;
-      node.fy = null;
+  const handleDragEnd = () => {
+    if (dragInfo.current) {
+      dragInfo.current = null;
       simulation.current?.alphaTarget(0);
     }
   };
@@ -266,6 +299,14 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
 
         {/* Unified Transform Layer */}
         <g transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}>
+          {/* Architectural Grid */}
+          <defs>
+            <pattern id="grid" width="100" height="100" patternUnits="userSpaceOnUse">
+              <path d="M 100 0 L 0 0 0 100" fill="none" stroke="currentColor" strokeWidth="0.5" className="text-slate-200 dark:text-slate-800" opacity="0.3" />
+              <circle cx="0" cy="0" r="1.5" fill="currentColor" className="text-slate-300 dark:text-slate-700" />
+            </pattern>
+          </defs>
+          <rect x="-5000" y="-5000" width="10000" height="10000" fill="url(#grid)" />
           {/* Render Edges */}
           {edges.map((edge) => {
           const isSourceCrashed = edge.source.status === "crashed";
@@ -294,13 +335,24 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
                   y2={edge.target.y}
                   stroke="url(#edgeGradient)"
                   strokeWidth={2}
-                  opacity={0.3}
-                  style={{ filter: "blur(2px)" }}
+                  strokeDasharray="10, 20"
+                  className="animate-pulse-slow"
+                  style={{ 
+                    filter: "blur(1px)",
+                    animation: "pulseData 3s linear infinite"
+                  }}
                 />
               )}
             </g>
           );
         })}
+
+        <style>{`
+          @keyframes pulseData {
+            from { stroke-dashoffset: 100; }
+            to { stroke-dashoffset: 0; }
+          }
+        `}</style>
 
         {/* Render Raft Timers */}
         {isSimulationRunning && positionedNodes.map((n) => {
@@ -379,7 +431,7 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
         })}
 
         {/* Render Nodes (Nested in SVG for perfect coordinate sync) */}
-        {positionedNodes.map((n) => {
+        {positionedNodes.filter(n => (n as any).isHub !== true).map((n) => {
           const rState = raftState[n.id];
           const isCrashed = n.status === "crashed";
           let nodeBg = "bg-white/80 dark:bg-slate-800/80 backdrop-blur-md";
@@ -424,16 +476,16 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
                 className="w-16 h-16 flex flex-col items-center justify-center pointer-events-auto cursor-grab active:cursor-grabbing"
                 onPointerDown={(e) => {
                   (e.target as HTMLElement).setPointerCapture(e.pointerId);
-                  handleDragStart(n.id, n.x, n.y);
+                  handleDragStart(n.id, e.clientX, e.clientY);
                 }}
                 onPointerMove={(e) => {
                   if ((e.target as HTMLElement).hasPointerCapture(e.pointerId)) {
-                    handleDrag(n.id, e.movementX, e.movementY);
+                    handleDrag(e.clientX, e.clientY);
                   }
                 }}
                 onPointerUp={(e) => {
                   (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-                  handleDragEnd(n.id);
+                  handleDragEnd();
                 }}
               >
                 <div className={`w-full h-full rounded-2xl border-2 flex flex-col items-center justify-center transition-all duration-300 ${nodeBg} ${nodeBorder} shadow-lg`}>
@@ -619,6 +671,13 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
           >
             <Crown className="w-4 h-4" />
           </button>
+          <button 
+            onClick={() => setShowMetrics(!showMetrics)}
+            className={`p-2.5 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors ${showMetrics ? "text-primary" : "text-slate-400"}`}
+            title="Consistency Metrics"
+          >
+            <BarChart3 className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
@@ -660,6 +719,10 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
           </div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {showMetrics && <MetricsPanel key="metrics-panel" />}
+      </AnimatePresence>
     </div>
   );
 }
