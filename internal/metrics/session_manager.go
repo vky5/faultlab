@@ -11,7 +11,14 @@ import (
 // SessionManager keeps in-memory metrics sessions keyed by cluster id.
 type SessionManager struct {
 	mu       sync.RWMutex
-	sessions map[string]*Session
+	sessions map[string][]*Session
+}
+
+// SessionStats stores session-specific throughput data.
+type SessionStats struct {
+	TotalRPCs   uint64
+	TotalWrites uint64
+	RecentKeys  []string
 }
 
 // Session stores tracked keys and snapshots for one cluster run.
@@ -22,6 +29,8 @@ type Session struct {
 
 	trackedKeys map[string]struct{}
 	snapshots   map[string][]Snapshot
+	timeline    map[string][]TimelineEvent
+	Stats       SessionStats
 }
 
 // SessionSnapshot is a read-only view of a session state.
@@ -30,15 +39,15 @@ type SessionSnapshot struct {
 	StartedAt   time.Time
 	StoppedAt   *time.Time
 	TrackedKeys []string
+	Stats       SessionStats
 }
 
 // NewSessionManager creates an empty in-memory session manager.
 func NewSessionManager() *SessionManager {
-	return &SessionManager{sessions: make(map[string]*Session)}
+	return &SessionManager{sessions: make(map[string][]*Session)}
 }
 
 // Start begins a metrics session for a cluster.
-// Returns an error if an active session already exists.
 func (m *SessionManager) Start(clusterID string, now time.Time) error {
 	clusterID = strings.TrimSpace(clusterID)
 	if clusterID == "" {
@@ -48,16 +57,27 @@ func (m *SessionManager) Start(clusterID string, now time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if existing, ok := m.sessions[clusterID]; ok && existing.StoppedAt == nil {
-		return fmt.Errorf("metrics session already active for cluster %q", clusterID)
+	history := m.sessions[clusterID]
+	if len(history) > 0 {
+		last := history[len(history)-1]
+		if last.StoppedAt == nil {
+			return fmt.Errorf("metrics session already active for cluster %q", clusterID)
+		}
 	}
 
-	m.sessions[clusterID] = &Session{
+	newSession := &Session{
 		ClusterID:   clusterID,
 		StartedAt:   now,
 		trackedKeys: make(map[string]struct{}),
 		snapshots:   make(map[string][]Snapshot),
+		timeline:    make(map[string][]TimelineEvent),
 	}
+
+	// Limit history to 50 sessions
+	if len(history) >= 50 {
+		history = history[1:]
+	}
+	m.sessions[clusterID] = append(history, newSession)
 
 	return nil
 }
@@ -72,10 +92,12 @@ func (m *SessionManager) Stop(clusterID string, now time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	s, ok := m.sessions[clusterID]
-	if !ok {
+	history := m.sessions[clusterID]
+	if len(history) == 0 {
 		return fmt.Errorf("no metrics session for cluster %q", clusterID)
 	}
+
+	s := history[len(history)-1]
 	if s.StoppedAt != nil {
 		return fmt.Errorf("metrics session already stopped for cluster %q", clusterID)
 	}
@@ -85,32 +107,41 @@ func (m *SessionManager) Stop(clusterID string, now time.Time) error {
 	return nil
 }
 
+// UpdateSessionStats updates the stats for the current session.
+func (m *SessionManager) UpdateSessionStats(clusterID string, stats SessionStats) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	history := m.sessions[clusterID]
+	if len(history) > 0 {
+		history[len(history)-1].Stats = stats
+	}
+}
+
 // IsActive reports whether a cluster has an active metrics session.
 func (m *SessionManager) IsActive(clusterID string) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	s, ok := m.sessions[strings.TrimSpace(clusterID)]
-	return ok && s.StoppedAt == nil
+	history := m.sessions[strings.TrimSpace(clusterID)]
+	if len(history) == 0 {
+		return false
+	}
+	return history[len(history)-1].StoppedAt == nil
 }
 
 // TrackKey registers a key for metrics collection under an active session.
 func (m *SessionManager) TrackKey(clusterID, key string) error {
 	clusterID = strings.TrimSpace(clusterID)
 	key = strings.TrimSpace(key)
-	if clusterID == "" {
-		return fmt.Errorf("cluster id is required")
-	}
-	if key == "" {
-		return fmt.Errorf("key is required")
-	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	s, ok := m.sessions[clusterID]
-	if !ok {
+	history := m.sessions[clusterID]
+	if len(history) == 0 {
 		return fmt.Errorf("no metrics session for cluster %q", clusterID)
 	}
+
+	s := history[len(history)-1]
 	if s.StoppedAt != nil {
 		return fmt.Errorf("metrics session is stopped for cluster %q", clusterID)
 	}
@@ -119,6 +150,42 @@ func (m *SessionManager) TrackKey(clusterID, key string) error {
 	if _, exists := s.snapshots[key]; !exists {
 		s.snapshots[key] = []Snapshot{}
 	}
+	if _, exists := s.timeline[key]; !exists {
+		s.timeline[key] = []TimelineEvent{}
+	}
+	return nil
+}
+
+// RecordTimelineEvent appends one fine-grained event into the active session.
+func (m *SessionManager) RecordTimelineEvent(clusterID, key string, observedAt time.Time, event TimelineEvent) error {
+	clusterID = strings.TrimSpace(clusterID)
+	key = strings.TrimSpace(key)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	history := m.sessions[clusterID]
+	if len(history) == 0 {
+		return fmt.Errorf("no metrics session for cluster %q", clusterID)
+	}
+
+	s := history[len(history)-1]
+	if s.StoppedAt != nil {
+		return fmt.Errorf("metrics session is stopped for cluster %q", clusterID)
+	}
+
+	s.trackedKeys[key] = struct{}{}
+	if _, exists := s.timeline[key]; !exists {
+		s.timeline[key] = []TimelineEvent{}
+	}
+
+	t := observedAt.Sub(s.StartedAt)
+	if t < 0 {
+		t = 0
+	}
+	event.Time = t
+
+	s.timeline[key] = append(s.timeline[key], event)
 	return nil
 }
 
@@ -126,20 +193,16 @@ func (m *SessionManager) TrackKey(clusterID, key string) error {
 func (m *SessionManager) RecordSnapshot(clusterID, key string, observedAt time.Time, nodes map[string]NodeState) error {
 	clusterID = strings.TrimSpace(clusterID)
 	key = strings.TrimSpace(key)
-	if clusterID == "" {
-		return fmt.Errorf("cluster id is required")
-	}
-	if key == "" {
-		return fmt.Errorf("key is required")
-	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	s, ok := m.sessions[clusterID]
-	if !ok {
+	history := m.sessions[clusterID]
+	if len(history) == 0 {
 		return fmt.Errorf("no metrics session for cluster %q", clusterID)
 	}
+
+	s := history[len(history)-1]
 	if s.StoppedAt != nil {
 		return fmt.Errorf("metrics session is stopped for cluster %q", clusterID)
 	}
@@ -163,20 +226,19 @@ func (m *SessionManager) RecordSnapshot(clusterID, key string, observedAt time.T
 	return nil
 }
 
-// GetSession returns a read-only snapshot of one session.
+// GetSession returns a read-only snapshot of the latest session.
 func (m *SessionManager) GetSession(clusterID string) (SessionSnapshot, error) {
 	clusterID = strings.TrimSpace(clusterID)
-	if clusterID == "" {
-		return SessionSnapshot{}, fmt.Errorf("cluster id is required")
-	}
 
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	s, ok := m.sessions[clusterID]
-	if !ok {
+	history := m.sessions[clusterID]
+	if len(history) == 0 {
 		return SessionSnapshot{}, fmt.Errorf("no metrics session for cluster %q", clusterID)
 	}
+
+	s := history[len(history)-1]
 
 	keys := make([]string, 0, len(s.trackedKeys))
 	for key := range s.trackedKeys {
@@ -195,80 +257,139 @@ func (m *SessionManager) GetSession(clusterID string) (SessionSnapshot, error) {
 		StartedAt:   s.StartedAt,
 		StoppedAt:   stopped,
 		TrackedKeys: keys,
+		Stats:       s.Stats,
 	}, nil
 }
 
-// ComputeKeyResult computes metrics for one tracked key in a session.
-func (m *SessionManager) ComputeKeyResult(clusterID, key string) (Result, error) {
-	clusterID = strings.TrimSpace(clusterID)
-	key = strings.TrimSpace(key)
-	if clusterID == "" {
-		return Result{}, fmt.Errorf("cluster id is required")
-	}
-	if key == "" {
-		return Result{}, fmt.Errorf("key is required")
-	}
-
+// GetHistory returns all stored sessions for a cluster.
+func (m *SessionManager) GetHistory(clusterID string) []SessionSnapshot {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	s, ok := m.sessions[clusterID]
-	if !ok {
+	history := m.sessions[clusterID]
+	snaps := make([]SessionSnapshot, len(history))
+	for i, s := range history {
+		keys := make([]string, 0, len(s.trackedKeys))
+		for k := range s.trackedKeys {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+
+		var stopped *time.Time
+		if s.StoppedAt != nil {
+			copyStopped := *s.StoppedAt
+			stopped = &copyStopped
+		}
+
+		snaps[i] = SessionSnapshot{
+			ClusterID:   s.ClusterID,
+			StartedAt:   s.StartedAt,
+			StoppedAt:   stopped,
+			TrackedKeys: keys,
+			Stats:       s.Stats,
+		}
+	}
+	return snaps
+}
+
+// ComputeKeyResult computes metrics for a single key in the latest session.
+func (m *SessionManager) ComputeKeyResult(clusterID, key string) (Result, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	history, ok := m.sessions[clusterID]
+	if !ok || len(history) == 0 {
 		return Result{}, fmt.Errorf("no metrics session for cluster %q", clusterID)
 	}
 
-	series, ok := s.snapshots[key]
-	if !ok {
-		return Result{}, fmt.Errorf("key %q is not tracked for cluster %q", key, clusterID)
-	}
-
-	copied := make([]Snapshot, len(series))
-	for i := range series {
-		copied[i] = Snapshot{Time: series[i].Time, Nodes: make(map[string]NodeState, len(series[i].Nodes))}
-		for nodeID, state := range series[i].Nodes {
-			copied[i].Nodes[nodeID] = state
-		}
-	}
-
-	return Compute(copied), nil
+	s := history[len(history)-1]
+	res := Compute(s.snapshots[key])
+	res.Timeline = s.timeline[key]
+	res.ConvergenceCurve = computeConvergenceCurve(s.timeline[key])
+	return res, nil
 }
 
-// ComputeAllResults computes metrics for all tracked keys in a session.
-func (m *SessionManager) ComputeAllResults(clusterID string) (map[string]Result, error) {
-	clusterID = strings.TrimSpace(clusterID)
-	if clusterID == "" {
-		return nil, fmt.Errorf("cluster id is required")
+// ComputeResultsBySessionID computes results for a specific session in history.
+func (m *SessionManager) ComputeResultsBySessionID(clusterID string, sessionIdx int) (map[string]Result, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	history, ok := m.sessions[clusterID]
+	if !ok || sessionIdx < 0 || sessionIdx >= len(history) {
+		return nil, fmt.Errorf("session not found")
 	}
 
+	s := history[sessionIdx]
+	out := make(map[string]Result)
+	allKeys := make(map[string]struct{})
+	for k := range s.snapshots { allKeys[k] = struct{}{} }
+	for k := range s.timeline { allKeys[k] = struct{}{} }
+
+	for key := range allKeys {
+		res := Compute(s.snapshots[key])
+		res.Timeline = s.timeline[key]
+		res.ConvergenceCurve = computeConvergenceCurve(s.timeline[key])
+		out[key] = res
+	}
+	return out, nil
+}
+
+// ComputeAllResults computes metrics for all tracked keys in the LATEST session.
+func (m *SessionManager) ComputeAllResults(clusterID string) (map[string]Result, error) {
 	m.mu.RLock()
-	s, ok := m.sessions[clusterID]
-	if !ok {
-		m.mu.RUnlock()
+	defer m.mu.RUnlock()
+
+	history, ok := m.sessions[clusterID]
+	if !ok || len(history) == 0 {
 		return nil, fmt.Errorf("no metrics session for cluster %q", clusterID)
 	}
 
-	keys := make([]string, 0, len(s.snapshots))
-	for key := range s.snapshots {
-		keys = append(keys, key)
-	}
-	seriesByKey := make(map[string][]Snapshot, len(s.snapshots))
-	for _, key := range keys {
-		series := s.snapshots[key]
-		copied := make([]Snapshot, len(series))
-		for i := range series {
-			copied[i] = Snapshot{Time: series[i].Time, Nodes: make(map[string]NodeState, len(series[i].Nodes))}
-			for nodeID, state := range series[i].Nodes {
-				copied[i].Nodes[nodeID] = state
-			}
-		}
-		seriesByKey[key] = copied
-	}
-	m.mu.RUnlock()
+	s := history[len(history)-1]
 
-	out := make(map[string]Result, len(seriesByKey))
-	for key, series := range seriesByKey {
-		out[key] = Compute(series)
-	}
+	out := make(map[string]Result, len(s.snapshots))
+	// Collect all keys from snapshots and timeline
+	allKeys := make(map[string]struct{})
+	for k := range s.snapshots { allKeys[k] = struct{}{} }
+	for k := range s.timeline { allKeys[k] = struct{}{} }
 
+	for key := range allKeys {
+		res := Compute(s.snapshots[key])
+		res.Timeline = s.timeline[key]
+		res.ConvergenceCurve = computeConvergenceCurve(s.timeline[key])
+		out[key] = res
+	}
 	return out, nil
+}
+
+func computeConvergenceCurve(events []TimelineEvent) []DivergencePoint {
+	if len(events) == 0 {
+		return nil
+	}
+	
+	// Track current value per node
+	nodeValues := make(map[string]string)
+	var curve []DivergencePoint
+	
+	// Sort events by time just in case
+	sorted := make([]TimelineEvent, len(events))
+	copy(sorted, events)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return sorted[i].Time < sorted[j].Time
+	})
+	
+	for _, e := range sorted {
+		nodeValues[e.NodeID] = e.Value + "|" + e.Origin + "|" + fmt.Sprint(e.Version)
+		
+		// Count distinct values
+		distinct := make(map[string]struct{})
+		for _, v := range nodeValues {
+			distinct[v] = struct{}{}
+		}
+		
+		curve = append(curve, DivergencePoint{
+			Time:       e.Time,
+			Divergence: len(distinct),
+		})
+	}
+	return curve
 }

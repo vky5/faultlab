@@ -1,0 +1,80 @@
+name: H5_failure_detection_latency
+hypothesis: "Node failure detection time follows SWIM protocol semantics - a node is marked suspect after (K × heartbeat_interval) ticks and confirmed dead after (K × 2 × heartbeat_interval) ticks for some K."
+
+description: |
+  This hypothesis tests the failure detection capabilities of the baseline SWIM-like protocol.
+  When a node crashes or becomes unresponsive:
+  1. Neighbors should detect the absence within a bounded time
+  2. The node should be marked suspect after timeout
+  3. The node should be marked dead after extended silence
+
+  We measure:
+  1. Time from crash to first neighbor detection
+  2. Time to mark node as suspect
+  3. Time to mark node as dead
+  4. False positive rate (alive node marked dead)
+
+variables:
+  heartbeat_interval: 5  # ticks
+  suspect_timeout: 20  # ticks
+  dead_timeout: 40  # ticks
+  crash_node: node3
+  observation_duration: 60s
+
+cluster:
+  id: h5_cluster
+  members:
+    - id: node1
+      port: 7501
+    - id: node2
+      port: 7502
+    - id: node3
+      port: 7503
+    - id: node4
+      port: 7504
+    - id: node5
+      port: 7505
+
+timeline:
+  - at: 0s
+    action: start_cluster
+
+  - at: 5s
+    action: start_metrics_collection
+    duration: 60s
+    metrics:
+      - node_status
+      - heartbeat_count
+      - detection_latency
+
+  - at: 10s
+    action: crash
+    target: node3
+    groups:
+      - [node1, node2, node3, node4, node5]
+
+  - at: 10s
+    action: start_failure_detection_timer
+
+  - at: 35s
+    action: observe_node_status
+    target: node3
+    groups:
+      - [node1, node2, node3, node4, node5]
+
+  - at: 55s
+    action: observe_node_status
+    target: node3
+    groups:
+      - [node1, node2, node3, node4, node5]
+
+expected_outcome: |
+  - node3 should be marked SUSPECT by at least one neighbor within 20-25 seconds
+  - node3 should be marked DEAD by all neighbors within 40-45 seconds
+  - Alive nodes (node1,2,4,5) should never be marked dead
+  - Detection latency should be consistent across multiple runs
+
+validation:
+  check_suspect_detection_time_max: 25s
+  check_dead_detection_time_max: 45s
+  check_no_false_positives: true

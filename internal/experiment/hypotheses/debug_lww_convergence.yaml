@@ -1,0 +1,58 @@
+name: Debug_LWW_Convergence
+hypothesis: "Diagnostic test to see why node1/node2 don't converge to FRESH_VALUE"
+
+cluster:
+  id: debug_cluster
+  members:
+    - id: node1
+      port: 7501
+    - id: node2
+      port: 7502
+    - id: node3
+      port: 7503
+    - id: node4
+      port: 7504
+    - id: node5
+      port: 7505
+
+timeline:
+  - at: 0s
+    action: start_cluster
+
+  # Create partition: [node1, node2] vs [node3, node4, node5]
+  - at: 2s
+    action: partition
+    groups:
+      - [node1, node2]
+      - [node3, node4, node5]
+
+  # node1 writes stale value in partition 1
+  - at: 4s
+    action: write
+    key: test_key
+    value: STALE_VALUE
+    target: group1
+    groups:
+      - [node1, node2]
+      - [node3, node4, node5]
+
+  # node3 writes fresh value in partition 2 (2s later)
+  - at: 6s
+    action: write
+    key: test_key
+    value: FRESH_VALUE
+    target: group2
+    groups:
+      - [node1, node2]
+      - [node3, node4, node5]
+
+  # Wait for internal partition convergence
+  - at: 8s
+    action: heal_partition
+    groups:
+      - [node1, node2]
+      - [node3, node4, node5]
+
+  # Extended observation period (40s total)
+  - at: 48s
+    action: start_cluster  # Dummy action to mark end of timeline

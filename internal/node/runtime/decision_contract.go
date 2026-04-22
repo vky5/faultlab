@@ -23,3 +23,10 @@ func (r *Runtime) BeforeTick() exec.TickDecision {
 	}
 	return r.fault.BeforeTick()
 }
+
+func (r *Runtime) BeforeReceive(sender string) exec.ReceiveDecision {
+	if r.fault == nil {
+		return exec.ReceiveDecision{Allow: true}
+	}
+	return r.fault.BeforeReceive(sender)
+}

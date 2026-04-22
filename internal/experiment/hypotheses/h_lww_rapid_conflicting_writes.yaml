@@ -1,0 +1,105 @@
+name: H_LWW_Rapid_Conflicting_Writes
+hypothesis: "LWW correctly handles rapid conflicting writes. The system converges to the value with the highest timestamp, even when writes occur milliseconds apart."
+
+description: |
+  This hypothesis stress-tests LWW by creating very tight write timing.
+  
+  Scenario:
+  1. Partition network: [node1, node2] vs [node3, node4, node5]
+  2. node1 writes "VALUE_V1" at t=5s
+  3. Immediately at t=5s (same second), node3 writes "VALUE_V2"
+  4. Within same partition, both spread
+  5. Heal network
+  6. Verify convergence to ONE value (deterministic by LWW)
+  
+  This tests that:
+  - Timestamps are precise enough to distinguish concurrent writes
+  - Tie-breaking by Origin is applied correctly
+  - Faster gossip does NOT override LWW ordering
+
+variables:
+  test_name: Rapid Conflicting Writes
+  expected_behavior: Deterministic convergence to single value
+
+cluster:
+  id: h_lww_rapid_cluster
+  members:
+    - id: node1
+      port: 7601
+    - id: node2
+      port: 7602
+    - id: node3
+      port: 7603
+    - id: node4
+      port: 7604
+    - id: node5
+      port: 7605
+
+timeline:
+  - at: 0s
+    action: start_cluster
+
+  # Partition: left=[node1, node2], right=[node3, node4, node5]
+  - at: 2s
+    action: partition
+    groups:
+      - [node1, node2]
+      - [node3, node4, node5]
+
+  # Both sides write at same time (5s)
+  # node1 writes first (left group)
+  - at: 5s
+    action: write
+    key: rapid_key
+    value: VALUE_V1_FROM_NODE1
+    target: group1
+    groups:
+      - [node1, node2]
+      - [node3, node4, node5]
+
+  # node3 writes also at 5s (right group, same YAML timestamp)
+  - at: 5s
+    action: write
+    key: rapid_key
+    value: VALUE_V2_FROM_NODE3
+    target: group2
+    groups:
+      - [node1, node2]
+      - [node3, node4, node5]
+
+  # Let each partition fully converge internally (7s of gossip)
+  - at: 12s
+    action: heal_partition
+    groups:
+      - [node1, node2]
+      - [node3, node4, node5]
+
+  # Wait for cross-partition gossip (~15s after heal)
+  # Metrics will collect convergence data
+
+expected_outcome: |
+  Convergence behavior:
+  
+  Case 1 (System is correct):
+  - If timestamps differ slightly → higher timestamp wins consistently
+  - If timestamps are identical → Origin tie-breaker determines winner (lexicographic)
+  - All nodes converge to SAME value
+  - That value is deterministic across runs
+  
+  Case 2 (System is broken - data corruption):
+  - Nodes converge to different values
+  - Value depends on node's local gossip timing, not timestamps
+  - Rerunning test gives inconsistent results
+  
+  Expected winner: VALUE_V2_FROM_NODE3 (if node3 > node1 lexicographically)
+  OR: VALUE_V1_FROM_NODE1 (if node1 > node3 lexicographically)
+  
+  What matters: Consistent winner, not the specific value.
+
+validation:
+  check_all_nodes_identical: true
+  check_deterministic: true
+  allow_either_value:
+    - VALUE_V1_FROM_NODE1
+    - VALUE_V2_FROM_NODE3
+  check_no_split_brain: true

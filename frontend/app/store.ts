@@ -55,6 +55,19 @@ export interface DivergencePoint {
   Divergence: number;
 }
 
+export interface TimelineEvent {
+  Time: number;
+  NodeID: string;
+  Key: string;
+  Value: string;
+  Version: number;
+  Origin: string;
+  Source: string;
+  EventType: string;
+  Round: number;
+  LWWTimestamp?: number;
+}
+
 export interface MetricsResult {
   ConvergenceTime?: number;
   FirstAgreementTime?: number;
@@ -63,17 +76,125 @@ export interface MetricsResult {
   AreaUnderDivergence: number;
   DivergenceOverTime: DivergencePoint[];
   StaleDurationPerNode: Record<string, number>;
+  Timeline: TimelineEvent[];
+  ConvergenceCurve: DivergencePoint[];
 }
 
 export interface MetricsSnapshot {
+  isActive: boolean;
   clusterId: string;
   startedAt: string;
   stoppedAt?: string;
   trackedKeys: string[];
   results: Record<string, MetricsResult>;
+  clusterStats?: {
+    totalRPCs: number;
+    totalWrites: number;
+    recentKeys: string[];
+  };
 }
 
 const API_BASE = "http://localhost:8080/api";
+const METRICS_HISTORY_STORAGE_KEY = "faultlab.metrics.history.v1";
+
+function readStoredMetricsHistory(): Record<string, MetricsSnapshot[]> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(METRICS_HISTORY_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, MetricsSnapshot[]>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredMetricsHistory(historyByCluster: Record<string, MetricsSnapshot[]>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(METRICS_HISTORY_STORAGE_KEY, JSON.stringify(historyByCluster));
+  } catch {
+    // Ignore quota/security failures; in-memory state continues to work.
+  }
+}
+
+function readStoredHistoryForCluster(clusterId: string): MetricsSnapshot[] {
+  const all = readStoredMetricsHistory();
+  return all[clusterId] || [];
+}
+
+function persistHistoryForCluster(clusterId: string, history: MetricsSnapshot[]) {
+  const all = readStoredMetricsHistory();
+  all[clusterId] = history;
+  writeStoredMetricsHistory(all);
+}
+
+function historySignature(snap: MetricsSnapshot): string {
+  const resultEntries = Object.entries(snap.results || {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, result]) => `${key}:${result.FinalConsistent ? "1" : "0"}:${result.PeakDivergence}:${result.AreaUnderDivergence}`)
+    .join("|");
+
+  const tracked = [...(snap.trackedKeys || [])].sort().join(",");
+  const stoppedAt = snap.stoppedAt || "active";
+  return `${snap.clusterId}|${snap.startedAt}|${stoppedAt}|${tracked}|${resultEntries}`;
+}
+
+function mergeHistorySnapshots(preferred: MetricsSnapshot[], incoming: MetricsSnapshot[]): MetricsSnapshot[] {
+  const merged: MetricsSnapshot[] = [];
+  const seen = new Set<string>();
+
+  for (const snap of [...preferred, ...incoming]) {
+    const sig = historySignature(snap);
+    if (seen.has(sig)) continue;
+    seen.add(sig);
+    merged.push(snap);
+  }
+
+  return merged.slice(0, 100);
+}
+
+function hasConvergenceEdge(prev: MetricsSnapshot | null, next: MetricsSnapshot): boolean {
+  if (!prev || !prev.results) {
+    return false;
+  }
+
+  const prevResults = prev.results || {};
+  const nextResults = next.results || {};
+  const keys = new Set<string>([...Object.keys(prevResults), ...Object.keys(nextResults)]);
+
+  for (const key of keys) {
+    const prevFinal = prevResults[key]?.FinalConsistent;
+    const nextFinal = nextResults[key]?.FinalConsistent;
+
+    // Record an event only when a known key flips between converged and divergent.
+    if (typeof prevFinal === "boolean" && typeof nextFinal === "boolean" && prevFinal !== nextFinal) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function appendEventHistoryEntry(clusterId: string, currentHistory: MetricsSnapshot[], snap: MetricsSnapshot): MetricsSnapshot[] {
+  // Keep newest first and bound memory growth.
+  const entry: MetricsSnapshot = {
+    ...snap,
+    trackedKeys: [...(snap.trackedKeys || [])],
+    results: { ...(snap.results || {}) },
+    clusterStats: snap.clusterStats
+      ? {
+          totalRPCs: snap.clusterStats.totalRPCs,
+          totalWrites: snap.clusterStats.totalWrites,
+          recentKeys: [...(snap.clusterStats.recentKeys || [])],
+        }
+      : undefined,
+  };
+
+  const nextHistory = [entry, ...currentHistory].slice(0, 100);
+  persistHistoryForCluster(clusterId, nextHistory);
+  return nextHistory;
+}
 
 const ELECTION_TIMEOUT_MIN = 2000;
 const ELECTION_TIMEOUT_MAX = 4000;
@@ -152,10 +273,12 @@ interface ClusterStore {
   showMetrics: boolean;
   setShowMetrics: (show: boolean) => void;
   metrics: MetricsSnapshot | null;
+  metricsHistory: MetricsSnapshot[];
   handleStartMetrics: (clusterId: string, intervalMs: number) => Promise<void>;
   handleStopMetrics: (clusterId: string) => Promise<void>;
   handleWatchKey: (clusterId: string, key: string) => Promise<void>;
   fetchMetricsSnapshot: (clusterId: string) => Promise<void>;
+  handleFetchMetricsHistory: (clusterId: string) => Promise<void>;
 }
 
 let activeEventSource: EventSource | null = null;
@@ -182,6 +305,7 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
   isLiveMode: true,
   showMetrics: false,
   metrics: null,
+  metricsHistory: [],
 
   setLiveMode: (live) => set({ isLiveMode: live }),
   setShowMetrics: (show) => set({ showMetrics: show }),
@@ -271,9 +395,11 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
 
   setSelectedClusterId: (id) => {
     get().disconnectLiveStream();
-    set({ selectedClusterId: id, messages: [] });
+    const cachedHistory = id ? readStoredHistoryForCluster(id) : [];
+    set({ selectedClusterId: id, messages: [], metrics: null, metricsHistory: cachedHistory });
     if (id) {
       get().connectLiveStream(id);
+      get().handleFetchMetricsHistory(id);
     }
   },
 
@@ -703,7 +829,10 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
     };
 
     activeEventSource.onerror = (e) => {
-      console.error("[SSE] Stream error", e);
+      // EventSource errors are often just connection drops/reloads
+      if (activeEventSource?.readyState !== EventSource.CONNECTING) {
+        console.error("[SSE] Stream error", e);
+      }
       get().disconnectLiveStream();
     };
   },
@@ -952,6 +1081,7 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
       if (res.ok) {
         const data = await res.json();
         set({ metrics: data });
+        await get().handleFetchMetricsHistory(clusterId);
       }
     } catch (err) {
       console.error(err);
@@ -966,6 +1096,8 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
       if (res.ok) {
         const data = await res.json();
         set({ metrics: data });
+        // Refresh history from backend
+        get().handleFetchMetricsHistory(clusterId);
       }
     } catch (err) {
       console.error(err);
@@ -980,8 +1112,7 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
         body: JSON.stringify({ key }),
       });
       if (res.ok) {
-        const data = await res.json();
-        set({ metrics: data });
+        get().fetchMetricsSnapshot(clusterId);
       }
     } catch (err) {
       console.error(err);
@@ -992,8 +1123,36 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
     try {
       const res = await fetch(`${API_BASE}/clusters/${clusterId}/metrics`);
       if (res.ok) {
+        const data: MetricsSnapshot = await res.json();
+        const prev = get().metrics;
+        const edgeTriggered = hasConvergenceEdge(prev, data);
+
+        if (edgeTriggered) {
+          const updatedHistory = appendEventHistoryEntry(clusterId, get().metricsHistory, data);
+          set({ metrics: data, metricsHistory: updatedHistory });
+        } else {
+          set({ metrics: data });
+          await get().handleFetchMetricsHistory(clusterId);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  },
+
+  handleFetchMetricsHistory: async (clusterId) => {
+    try {
+      const res = await fetch(`${API_BASE}/clusters/${clusterId}/metrics/history`);
+      if (res.ok) {
         const data = await res.json();
-        set({ metrics: data });
+        // Backend returns oldest first, we want newest first in UI
+        const normalized = [...(data || [])].reverse() as MetricsSnapshot[];
+        const localCached = readStoredHistoryForCluster(clusterId);
+        const current = get().metricsHistory;
+        const merged = mergeHistorySnapshots([...current, ...localCached], normalized);
+
+        set({ metricsHistory: merged });
+        persistHistoryForCluster(clusterId, merged);
       }
     } catch (err) {
       console.error(err);

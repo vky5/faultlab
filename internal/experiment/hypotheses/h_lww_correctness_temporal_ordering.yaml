@@ -1,0 +1,95 @@
+name: H_LWW_Correctness_Temporal_Ordering
+hypothesis: "LWW conflict resolution converges to the value with the highest timestamp, regardless of propagation speed. Faster gossip should NOT override causal ordering."
+
+description: |
+  This hypothesis tests whether the gossip protocol correctly resolves conflicts based on
+  Last-Writer-Wins (LWW) semantics, specifically when the newer write propagates slower.
+  
+  Scenario:
+  1. Partition network into 2 groups
+  2. node1 writes "STALE_VALUE" at t=6s → becomes the "old write"
+  3. node3 writes "FRESH_VALUE" at t=8s → becomes the "new write" (2s later, should win)
+  4. Heal partition
+  5. Artificially delay node3's gossip by 3s (node1 spreads first)
+  6. Verify: all nodes converge to "FRESH_VALUE" (newer), NOT "STALE_VALUE" (faster)
+  
+  If system converges to STALE_VALUE despite FRESH_VALUE being newer → data corruption bug found.
+
+variables:
+  stale_write_time: 6s      # First write (should lose)
+  fresh_write_time: 8s      # Second write (should win, 2s later)
+  heal_time: 10s            # Network heals
+  convergence_timeout: 35s  # Time to verify convergence
+  expected_winner: FRESH_VALUE
+
+cluster:
+  id: h_lww_cluster
+  members:
+    - id: node1
+      port: 7501
+    - id: node2
+      port: 7502
+    - id: node3
+      port: 7503
+    - id: node4
+      port: 7504
+    - id: node5
+      port: 7505
+
+timeline:
+  - at: 0s
+    action: start_cluster
+
+  # Create partition: [node1, node2] vs [node3, node4, node5]
+  - at: 3s
+    action: partition
+    groups:
+      - [node1, node2]
+      - [node3, node4, node5]
+
+  # First write: node1 writes at 6s (stale write, should lose)
+  - at: 6s
+    action: write
+    key: test_key
+    value: STALE_VALUE
+    target: group1
+    groups:
+      - [node1, node2]
+      - [node3, node4, node5]
+
+  # Second write: node3 writes 2s later at 8s (fresh write, should win)
+  - at: 8s
+    action: write
+    key: test_key
+    value: FRESH_VALUE
+    target: group2
+    groups:
+      - [node1, node2]
+      - [node3, node4, node5]
+
+  # Let each partition converge internally (10s of gossip within groups)
+  - at: 10s
+    action: heal_partition
+    groups:
+      - [node1, node2]
+      - [node3, node4, node5]
+
+  # Now both values try to spread across the healed partition
+  # Expected: FRESH_VALUE (newer) should win, even if STALE_VALUE spreads faster
+  # Metrics will collect data through convergence window (30s total)
+
+expected_outcome: |
+  All nodes should converge to "FRESH_VALUE" because:
+  - FRESH_VALUE has timestamp ≈ 8000ms (written at 8s)
+  - STALE_VALUE has timestamp ≈ 6000ms (written at 6s)
+  - LWW rule: higher timestamp wins
+  
+  If any node still has "STALE_VALUE" at t=25s → LWW is broken.
+  
+  Convergence should happen by ~15s (5s after heal + ~3 rounds of epidemic spread).
+
+validation:
+  check_all_nodes_identical: true
+  check_value_equals: FRESH_VALUE
+  check_convergence_time_max: 20s
+  check_no_divergence: true

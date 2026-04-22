@@ -14,6 +14,11 @@ type ProbeDecision struct {
 	Reason string
 }
 
+type ReceiveDecision struct {
+	Allow  bool
+	Reason string
+}
+
 type TickDecision struct {
 	Allow  bool
 	Delay  time.Duration
@@ -22,6 +27,7 @@ type TickDecision struct {
 
 type FaultDecider interface {
 	BeforeSend(peer string) SendDecision
+	BeforeReceive(peer string) ReceiveDecision
 	BeforeProbe(peer string) ProbeDecision
 	BeforeTick() TickDecision
 }

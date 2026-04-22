@@ -6,8 +6,9 @@ import (
 )
 
 // NodeState is the observable state for one tracked key on one node.
-// Equality is strict: value, version, origin, and metadata flag all matter.
+// Equality is strict: existence, value, version, origin, and metadata flag all matter.
 type NodeState struct {
+	Exists      bool
 	Value       string
 	Version     int64
 	Origin      string
@@ -18,6 +19,20 @@ type NodeState struct {
 type Snapshot struct {
 	Time  time.Duration
 	Nodes map[string]NodeState
+}
+
+// TimelineEvent is a fine-grained state change event.
+type TimelineEvent struct {
+	Time      time.Duration
+	NodeID    string
+	Key       string
+	Value     string
+	Version   int64
+	Origin    string
+	Source    string
+	EventType    string // WRITE, GOSSIP_RECEIVE, RESOLVE
+	Round        uint64 // logical tick or gossip cycle
+	LWWTimestamp int64  // high-resolution wall clock for LWW
 }
 
 /*
@@ -38,13 +53,15 @@ type DivergencePoint struct {
 
 // Result is the aggregated metrics output for a sequence of snapshots.
 type Result struct {
-	ConvergenceTime      *time.Duration // first time when all nodes have identical state
-	FirstAgreementTime   *time.Duration // first time when a quorum of nodes agree on the same state
-	FinalConsistent      bool // whether all nodes are consistent in the final snapshot
-	PeakDivergence       int // maximum number of divergent nodes at any snapshot
-	AreaUnderDivergence  time.Duration // 
-	DivergenceOverTime   []DivergencePoint // time series of divergence at each snapshot
+	ConvergenceTime      *time.Duration           // first time when all nodes have identical state
+	FirstAgreementTime   *time.Duration           // first time when a quorum of nodes agree on the same state
+	FinalConsistent      bool                     // whether all nodes are consistent in the final snapshot
+	PeakDivergence       int                      // maximum number of divergent nodes at any snapshot
+	AreaUnderDivergence  time.Duration            //
+	DivergenceOverTime   []DivergencePoint        // time series of divergence at each snapshot
 	StaleDurationPerNode map[string]time.Duration // total time each node was in a divergent state
+	Timeline             []TimelineEvent          // fine-grained event history
+	ConvergenceCurve     []DivergencePoint        // number of distinct values over time
 }
 
 // Compute reduces ordered or unordered snapshots into the core metrics.
@@ -76,8 +93,10 @@ func Compute(snapshots []Snapshot) Result {
 		}
 
 		if divergence == 0 && result.ConvergenceTime == nil {
-			convergenceTime := snapshot.Time
-			result.ConvergenceTime = &convergenceTime
+			if allNodesExist(snapshot.Nodes) {
+				convergenceTime := snapshot.Time
+				result.ConvergenceTime = &convergenceTime
+			}
 		}
 
 		if result.FirstAgreementTime == nil {
@@ -103,8 +122,20 @@ func Compute(snapshots []Snapshot) Result {
 	}
 
 	last := result.DivergenceOverTime[len(result.DivergenceOverTime)-1]
-	result.FinalConsistent = last.Divergence == 0
+	result.FinalConsistent = last.Divergence == 0 && allNodesExist(ordered[len(ordered)-1].Nodes)
 	return result
+}
+
+func allNodesExist(nodes map[string]NodeState) bool {
+	if len(nodes) == 0 {
+		return false
+	}
+	for _, node := range nodes {
+		if !node.Exists {
+			return false
+		}
+	}
+	return true
 }
 
 func mostCommonState(nodes map[string]NodeState) (NodeState, int) {

@@ -20,6 +20,16 @@ type CommandListenerConfig struct {
 	AuthToken string
 }
 
+type metricsInsightRow struct {
+	key         string
+	final       bool
+	convergence *time.Duration
+	peak        int
+	auc         time.Duration
+	topStale    string
+	staleByNode map[string]time.Duration
+}
+
 // StartCommandListener starts a simple command listener intended for CLI clients.
 // It accepts plain text commands via POST /command.
 func StartCommandListener(actor *Actor, cfg CommandListenerConfig) *http.Server {
@@ -389,6 +399,7 @@ func formatMetricsResult(res interface{}) (string, bool) {
 
 	tw := tabwriter.NewWriter(&b, 0, 4, 2, ' ', 0)
 	_, _ = fmt.Fprintln(tw, "KEY\tFINAL\tCONVERGENCE\tPEAK\tAUC\tTOP_STALE")
+	rows := make([]metricsInsightRow, 0, len(keys))
 	for _, key := range keys {
 		resultVal := resultsValue.MapIndex(reflect.ValueOf(key))
 		if !resultVal.IsValid() {
@@ -404,8 +415,21 @@ func formatMetricsResult(res interface{}) (string, bool) {
 		final := readBoolField(resultVal, "FinalConsistent")
 		peak := readIntField(resultVal, "PeakDivergence")
 		auc := readDurationField(resultVal, "AreaUnderDivergence")
+		aucValue := readDurationValue(resultVal, "AreaUnderDivergence")
 		conv := readDurationPointerField(resultVal, "ConvergenceTime")
+		convValue := readDurationPointerValue(resultVal, "ConvergenceTime")
 		topStale := readTopStaleNode(resultVal)
+		staleByNode := readStaleDurationMap(resultVal)
+
+		rows = append(rows, metricsInsightRow{
+			key:         key,
+			final:       final,
+			convergence: convValue,
+			peak:        peak,
+			auc:         aucValue,
+			topStale:    topStale,
+			staleByNode: staleByNode,
+		})
 
 		_, _ = fmt.Fprintf(
 			tw,
@@ -419,8 +443,69 @@ func formatMetricsResult(res interface{}) (string, bool) {
 		)
 	}
 	_ = tw.Flush()
+	appendMetricsInsights(&b, rows)
 
 	return b.String(), true
+}
+
+func appendMetricsInsights(b *bytes.Buffer, rows []metricsInsightRow) {
+	if len(rows) == 0 {
+		return
+	}
+
+	divergent := make([]string, 0)
+	worstKey := ""
+	worstAUC := time.Duration(-1)
+	maxPeak := 0
+	aggStale := map[string]time.Duration{}
+
+	for _, row := range rows {
+		if !row.final {
+			divergent = append(divergent, row.key)
+		}
+		if row.auc > worstAUC {
+			worstAUC = row.auc
+			worstKey = row.key
+		}
+		if row.peak > maxPeak {
+			maxPeak = row.peak
+		}
+		for nodeID, d := range row.staleByNode {
+			aggStale[nodeID] += d
+		}
+	}
+
+	worstNode := "-"
+	if len(aggStale) > 0 {
+		maxNode := ""
+		maxDur := time.Duration(-1)
+		for nodeID, d := range aggStale {
+			if d > maxDur || (d == maxDur && nodeID < maxNode) {
+				maxDur = d
+				maxNode = nodeID
+			}
+		}
+		if maxNode != "" {
+			worstNode = fmt.Sprintf("%s=%s", maxNode, maxDur)
+		}
+	}
+
+	_, _ = fmt.Fprintln(b, "")
+	_, _ = fmt.Fprintln(b, "INSIGHTS")
+	if len(divergent) == 0 {
+		_, _ = fmt.Fprintln(b, "- all tracked keys are currently converged")
+	} else {
+		sort.Strings(divergent)
+		_, _ = fmt.Fprintf(b, "- keys still divergent: %s\n", strings.Join(divergent, ", "))
+	}
+	if worstKey != "" {
+		_, _ = fmt.Fprintf(b, "- highest inconsistency area: %s (%s)\n", worstKey, worstAUC)
+	}
+	_, _ = fmt.Fprintf(b, "- highest observed peak divergence: %d\n", maxPeak)
+	_, _ = fmt.Fprintf(b, "- most stale node overall: %s\n", worstNode)
+	if len(divergent) > 0 {
+		_, _ = fmt.Fprintln(b, "- hint: if this is a finished run, add a longer settle window or inspect partition/heal timing")
+	}
 }
 
 func normalizeStringSlice(raw interface{}) []string {
@@ -457,6 +542,19 @@ func readDurationField(v reflect.Value, fieldName string) string {
 	}
 }
 
+func readDurationValue(v reflect.Value, fieldName string) time.Duration {
+	f, ok := readField(v, fieldName)
+	if !ok {
+		return 0
+	}
+	switch f.Kind() {
+	case reflect.Int, reflect.Int64:
+		return time.Duration(f.Int())
+	default:
+		return 0
+	}
+}
+
 func readDurationPointerField(v reflect.Value, fieldName string) string {
 	f, ok := readField(v, fieldName)
 	if !ok {
@@ -475,6 +573,42 @@ func readDurationPointerField(v reflect.Value, fieldName string) string {
 	default:
 		return fmt.Sprintf("%v", e.Interface())
 	}
+}
+
+func readDurationPointerValue(v reflect.Value, fieldName string) *time.Duration {
+	f, ok := readField(v, fieldName)
+	if !ok || f.Kind() != reflect.Ptr || f.IsNil() {
+		return nil
+	}
+	e := f.Elem()
+	if e.Kind() != reflect.Int && e.Kind() != reflect.Int64 {
+		return nil
+	}
+	d := time.Duration(e.Int())
+	return &d
+}
+
+func readStaleDurationMap(v reflect.Value) map[string]time.Duration {
+	f, ok := readField(v, "StaleDurationPerNode")
+	if !ok || f.Kind() != reflect.Map || f.Len() == 0 {
+		return nil
+	}
+	out := make(map[string]time.Duration, f.Len())
+	for _, k := range f.MapKeys() {
+		if k.Kind() != reflect.String {
+			continue
+		}
+		node := k.String()
+		dv := f.MapIndex(k)
+		if !dv.IsValid() {
+			continue
+		}
+		switch dv.Kind() {
+		case reflect.Int, reflect.Int64:
+			out[node] = time.Duration(dv.Int())
+		}
+	}
+	return out
 }
 
 func readTopStaleNode(v reflect.Value) string {

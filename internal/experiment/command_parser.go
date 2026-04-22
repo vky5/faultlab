@@ -50,9 +50,13 @@ func (s TimelineStep) compileCommands(clusterID, cpHost string, cpPort int, clus
 	case "start_cluster":
 		return compileStartClusterCommands(clusterID, cpHost, cpPort, clusterCfg), nil
 	case "partition":
-		return compilePartitionCommands(clusterID, s.Groups, true, clusterCfg)
+		cmds, err := compilePartitionCommands(clusterID, s.Groups, true, clusterCfg)
+		if err != nil { return nil, err }
+		return append([]string{fmt.Sprintf("log-lifecycle %s SYSTEM PARTITION \"Splitting cluster into %d partitions\"", clusterID, len(s.Groups))}, cmds...), nil
 	case "heal_partition":
-		return compilePartitionCommands(clusterID, s.Groups, false, clusterCfg)
+		cmds, err := compilePartitionCommands(clusterID, s.Groups, false, clusterCfg)
+		if err != nil { return nil, err }
+		return append([]string{fmt.Sprintf("log-lifecycle %s SYSTEM HEAL \"Healing all network partitions\"", clusterID)}, cmds...), nil
 	case "write":
 		nodeID, err := resolveTargetGroupLeader(s.Target, s.Groups, clusterCfg)
 		if err != nil {
@@ -65,8 +69,9 @@ func (s TimelineStep) compileCommands(clusterID, cpHost string, cpPort int, clus
 }
 
 func compileStartClusterCommands(clusterID, cpHost string, cpPort int, clusterCfg ClusterConfig) []string {
-	commands := make([]string, 0, len(clusterCfg.Members)+1)
+	commands := make([]string, 0, len(clusterCfg.Members)+2)
 	commands = append(commands, fmt.Sprintf("cp new-cluster %s", clusterID))
+	commands = append(commands, fmt.Sprintf("log-lifecycle %s SYSTEM NODE_JOIN \"Starting cluster members\"", clusterID))
 
 	for i := 1; i <= len(clusterCfg.Members); i++ {
 		nodeID, port, host, err := resolveMember(i, clusterCfg)

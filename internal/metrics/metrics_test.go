@@ -10,15 +10,15 @@ func TestComputeDetectsVersionConflictNoConvergence(t *testing.T) {
 		{
 			Time: 0,
 			Nodes: map[string]NodeState{
-				"nodeA": {Value: "3", Version: 1, Origin: "nodeA", HasMetadata: true},
-				"nodeB": {Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
+				"nodeA": {Exists: true, Value: "3", Version: 1, Origin: "nodeA", HasMetadata: true},
+				"nodeB": {Exists: true, Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
 			},
 		},
 		{
 			Time: 10 * time.Second,
 			Nodes: map[string]NodeState{
-				"nodeA": {Value: "3", Version: 1, Origin: "nodeA", HasMetadata: true},
-				"nodeB": {Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
+				"nodeA": {Exists: true, Value: "3", Version: 1, Origin: "nodeA", HasMetadata: true},
+				"nodeB": {Exists: true, Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
 			},
 		},
 	}
@@ -59,17 +59,17 @@ func TestComputeDetectsConvergenceAndStaleTime(t *testing.T) {
 		{
 			Time: 0,
 			Nodes: map[string]NodeState{
-				"nodeA": {Value: "3", Version: 1, Origin: "nodeA", HasMetadata: true},
-				"nodeB": {Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
-				"nodeC": {Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
+				"nodeA": {Exists: true, Value: "3", Version: 1, Origin: "nodeA", HasMetadata: true},
+				"nodeB": {Exists: true, Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
+				"nodeC": {Exists: true, Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
 			},
 		},
 		{
 			Time: 5 * time.Second,
 			Nodes: map[string]NodeState{
-				"nodeA": {Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
-				"nodeB": {Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
-				"nodeC": {Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
+				"nodeA": {Exists: true, Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
+				"nodeB": {Exists: true, Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
+				"nodeC": {Exists: true, Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
 			},
 		},
 	}

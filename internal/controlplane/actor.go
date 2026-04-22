@@ -449,10 +449,22 @@ func (a *Actor) Run() {
 					cmd.Reply(nil, err)
 					continue
 				}
-				cmd.Reply(map[string]any{"status": "watching", "clusterId": cmd.ClusterID, "key": cmd.Key}, nil)
+				cmd.Reply(map[string]any{"status": "ok"}, nil)
+
+			case CmdLogLifecycleEvent:
+				a.service.RecordLifecycleEvent(cmd.ClusterID, cmd.NodeID, cmd.EventType, cmd.Value)
+				cmd.Reply(map[string]any{"status": "ok"}, nil)
 
 			case CmdMetricsShow:
 				result, err := a.service.GetMetricsSnapshot(cmd.ClusterID)
+				if err != nil {
+					cmd.Reply(nil, err)
+					continue
+				}
+				cmd.Reply(result, nil)
+
+			case CmdMetricsHistory:
+				result, err := a.service.GetMetricsHistory(cmd.ClusterID)
 				if err != nil {
 					cmd.Reply(nil, err)
 					continue
@@ -584,26 +596,12 @@ func (a *Actor) startNodeProcess(cmd Command) error {
 }
 
 func (a *Actor) newNodeProcess(projectRoot string, nodeArgs []string) *exec.Cmd {
-	binaryPath := a.options.NodeBinaryPath
-	if strings.TrimSpace(binaryPath) == "" {
-		binaryPath = "bin/node"
-	}
-
-	if !filepath.IsAbs(binaryPath) {
-		binaryPath = filepath.Join(projectRoot, binaryPath)
-	}
-
-	if info, err := os.Stat(binaryPath); err == nil && !info.IsDir() {
-		if info.Mode()&0o111 != 0 {
-			return exec.CommandContext(a.ctx, binaryPath, nodeArgs...)
-		}
-		log.Printf("node binary exists but is not executable: %s; falling back to go run", binaryPath)
-	} else {
-		log.Printf("node binary not found at %s; falling back to go run", binaryPath)
-	}
-
+	// Prioritize 'go run' to allow instant updates without manual recompile.
 	goArgs := append([]string{"run", "./cmd/node"}, nodeArgs...)
-	return exec.CommandContext(a.ctx, "go", goArgs...)
+	cmd := exec.CommandContext(a.ctx, "go", goArgs...)
+	cmd.Dir = projectRoot
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	return cmd
 }
 
 func (a *Actor) killCluster(clusterID string) (int, error) {
@@ -763,10 +761,16 @@ func (a *Actor) executeHypothesis(name, clusterID, path string, batches []experi
 	started := time.Now()
 	metricsStarted := false
 	watchRegistered := false
+	completed := false
 
 	defer func() {
 		if !metricsStarted {
 			return
+		}
+		if completed {
+			const settleWindow = 3 * time.Second
+			log.Printf("hypothesis %s applying metrics settle window %s for cluster %s", name, settleWindow, clusterID)
+			time.Sleep(settleWindow)
 		}
 		result, err := a.service.StopMetricsSession(clusterID)
 		if err != nil {
@@ -821,6 +825,7 @@ func (a *Actor) executeHypothesis(name, clusterID, path string, batches []experi
 		}
 	}
 
+	completed = true
 	log.Printf("hypothesis %s (cluster %s) finished (%s)", name, clusterID, path)
 }
 

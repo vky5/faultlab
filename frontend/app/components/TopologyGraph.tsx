@@ -22,6 +22,7 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ w: 0, h: 0 });
   const { raftState, messages, isSimulationRunning, isPaused, showControlPlane, toggleControlPlane, showMetrics, setShowMetrics } = useClusterStore();
+  const [isMetricsExpanded, setIsMetricsExpanded] = useState(false);
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
   const [simNodes, setSimNodes] = useState<SimNode[]>([]);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -671,13 +672,20 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
           >
             <Crown className="w-4 h-4" />
           </button>
-          <button 
+          {/* Metrics Toggle Button */}
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
             onClick={() => setShowMetrics(!showMetrics)}
-            className={`p-2.5 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors ${showMetrics ? "text-primary" : "text-slate-400"}`}
-            title="Consistency Metrics"
+            title="Metrics Analysis"
+            className={`p-2.5 rounded-xl border transition-all ${
+              showMetrics 
+                ? "bg-primary text-white border-primary shadow-lg shadow-primary/30" 
+                : "bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:border-primary/50"
+            }`}
           >
-            <BarChart3 className="w-4 h-4" />
-          </button>
+            <BarChart3 className={`w-4 h-4 ${showMetrics ? "animate-pulse" : ""}`} />
+          </motion.button>
         </div>
       </div>
 
@@ -721,7 +729,12 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
       </div>
 
       <AnimatePresence>
-        {showMetrics && <MetricsPanel key="metrics-panel" />}
+        {showMetrics && (
+          <MetricsPanel 
+            isExpanded={isMetricsExpanded} 
+            onToggleExpand={() => setIsMetricsExpanded(!isMetricsExpanded)} 
+          />
+        )}
       </AnimatePresence>
     </div>
   );

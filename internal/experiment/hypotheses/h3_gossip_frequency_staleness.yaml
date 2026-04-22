@@ -1,0 +1,101 @@
+name: H3_gossip_frequency_staleness
+hypothesis: "Data staleness follows a geometric distribution with mean equal to half the gossip interval - higher frequency gossip reduces but does not eliminate staleness."
+
+description: |
+  This hypothesis tests whether staleness follows predictable probabilistic patterns.
+  In gossip protocols, a node may not have received the latest update since the last gossip round.
+  The probability of being stale should decrease exponentially with time since the write.
+
+  We write unique values and measure:
+  1. Time distribution of when nodes receive updates
+  2. Maximum staleness observed at any node
+  3. Relationship between gossip interval and maximum observed staleness
+
+variables:
+  gossip_interval: 3  # default
+  writes_per_node: 10
+  write_spacing: 5s
+  measurement_duration: 60s
+
+cluster:
+  id: h3_cluster
+  members:
+    - id: node1
+      port: 7301
+    - id: node2
+      port: 7302
+    - id: node3
+      port: 7303
+    - id: node4
+      port: 7304
+    - id: node5
+      port: 7305
+
+timeline:
+  - at: 0s
+    action: start_cluster
+
+  - at: 5s
+    action: write
+    key: observation_key
+    value: initial
+    target: all
+    groups:
+      - [node1, node2, node3, node4, node5]
+
+  - at: 10s
+    action: start_metrics_collection
+    duration: 60s
+    metrics:
+      - staleness
+      - version_drift
+      - freshness
+
+  - at: 12s
+    action: write
+    key: observation_key
+    value: t12
+    target: node1
+    groups:
+      - [node1, node2, node3, node4, node5]
+
+  - at: 17s
+    action: write
+    key: observation_key
+    value: t17
+    target: node2
+    groups:
+      - [node1, node2, node3, node4, node5]
+
+  - at: 22s
+    action: write
+    key: observation_key
+    value: t22
+    target: node3
+    groups:
+      - [node1, node2, node3, node4, node5]
+
+  - at: 27s
+    action: write
+    key: observation_key
+    value: t27
+    target: node4
+    groups:
+      - [node1, node2, node3, node4, node5]
+
+  - at: 32s
+    action: write
+    key: observation_key
+    value: t32
+    target: node5
+    groups:
+      - [node1, node2, node3, node4, node5]
+
+expected_outcome: |
+  - Maximum staleness should be bounded by 2 × gossip_interval (99th percentile)
+  - Staleness distribution should approximate geometric decay
+  - Each write should propagate to all nodes within O(log n) gossip rounds
+
+validation:
+  check_staleness_bound: 6s
+  check_propagation_bound: 15s

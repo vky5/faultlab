@@ -1,0 +1,89 @@
+name: H1_partition_convergence_time
+hypothesis: "After a network partition heals, gossip protocol should achieve eventual consistency within O(log n) rounds, where n is the number of nodes in the cluster."
+
+description: |
+  This hypothesis tests the convergence time of the gossip protocol after a network partition heals.
+  We create a partition, allow conflicting writes in each partition group, then heal the partition
+  and measure how long it takes for all nodes to converge to the same value.
+
+variables:
+  convergence_threshold: 0.0  # All nodes must have identical state
+  max_acceptable_convergence_time: 30s  # Expected: O(log 5) ≈ 3 rounds × 3s = 9s
+  conflict_count: 3  # Number of conflicting writes per partition group
+
+cluster:
+  id: h1_cluster
+  members:
+    - id: node1
+      port: 7101
+    - id: node2
+      port: 7102
+    - id: node3
+      port: 7103
+    - id: node4
+      port: 7104
+    - id: node5
+      port: 7105
+
+timeline:
+  - at: 0s
+    action: start_cluster
+
+  - at: 5s
+    action: partition
+    groups:
+      - [node1, node2]
+      - [node3, node4, node5]
+
+  - at: 6s
+    action: write
+    key: key_a
+    value: partition_A_value
+    target: group1
+    groups:
+      - [node1, node2]
+      - [node3, node4, node5]
+
+  - at: 6s
+    action: write
+    key: key_a
+    value: partition_B_value
+    target: group2
+    groups:
+      - [node1, node2]
+      - [node3, node4, node5]
+
+  - at: 10s
+    action: write
+    key: key_b
+    value: A_10
+    target: group1
+    groups:
+      - [node1, node2]
+      - [node3, node4, node5]
+
+  - at: 10s
+    action: write
+    key: key_b
+    value: B_10
+    target: group2
+    groups:
+      - [node1, node2]
+      - [node3, node4, node5]
+  
+  - at: 15s
+    action: heal_partition
+    groups:
+      - [node1, node2]
+      - [node3, node4, node5]
+
+expected_outcome: |
+  All nodes should converge to the same value for all keys within 30 seconds.
+  The winning value should be determined by Last-Writer-Wins (LWW) based on timestamps.
+  Convergence should follow exponential spread pattern typical of gossip.
+
+validation:
+  check_convergence: true
+  check_keys:
+    - key_a
+    - key_b

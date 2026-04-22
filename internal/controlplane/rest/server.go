@@ -108,6 +108,9 @@ func (s *Server) HandleNodes(w http.ResponseWriter, r *http.Request) {
 	} else if r.Method == http.MethodGet && len(parts) == 5 && parts[4] == "metrics" {
 		s.getMetrics(w, r, clusterID)
 		return
+	} else if r.Method == http.MethodGet && len(parts) == 6 && parts[4] == "metrics" && parts[5] == "history" {
+		s.getMetricsHistory(w, r, clusterID)
+		return
 	} else if r.Method == http.MethodPost && len(parts) == 6 && parts[4] == "metrics" && parts[5] == "start" {
 		s.startMetrics(w, r, clusterID)
 		return
@@ -501,6 +504,20 @@ func (s *Server) watchMetricsKey(w http.ResponseWriter, r *http.Request, cluster
 	cmd.Key = req.Key
 	s.actor.Submit(cmd)
 
+	res, err := cmd.MapWait()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(res)
+}
+func (s *Server) getMetricsHistory(w http.ResponseWriter, r *http.Request, clusterID string) {
+	cmd := controlplane.NewCommand(controlplane.CmdMetricsHistory)
+	cmd.ClusterID = clusterID
+
+	s.actor.Submit(cmd)
 	res, err := cmd.MapWait()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

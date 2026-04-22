@@ -1,0 +1,135 @@
+name: H_LWW_Successive_Writes_Causality
+hypothesis: "LWW correctly tracks causal ordering through successive writes. System converges to the absolute latest write, regardless of propagation paths."
+
+description: |
+  This hypothesis tests causal ordering: when node writes multiple times,
+  the system should converge to the LATEST write, not any intermediate value.
+  
+  Scenario:
+  1. Partition network
+  2. node1 writes sequence: VALUE_A → VALUE_B → VALUE_C (at t=5s, 6s, 7s)
+  3. node3 writes sequence: VALUE_X → VALUE_Y → VALUE_Z (at t=5s, 6s, 7s)
+  4. Different partitions spread values at different rates
+  5. Heal network
+  6. Expected: All nodes converge to VALUE_C and VALUE_Z with latest timestamps
+  
+  This catches "stale write resurrection" bugs where an old write from node3
+  (VALUE_X) somehow overwrites a newer write (VALUE_B) from node1.
+
+variables:
+  test_scenario: Successive Causal Writes
+
+cluster:
+  id: h_lww_causality_cluster
+  members:
+    - id: node1
+      port: 7701
+    - id: node2
+      port: 7702
+    - id: node3
+      port: 7703
+    - id: node4
+      port: 7704
+
+timeline:
+  - at: 0s
+    action: start_cluster
+
+  # Partition: [node1, node2] vs [node3, node4]
+  - at: 2s
+    action: partition
+    groups:
+      - [node1, node2]
+      - [node3, node4]
+
+  # Left side: node1 writes VALUE_A at t=5s
+  - at: 5s
+    action: write
+    key: causality_key
+    value: VALUE_A
+    target: group1
+    groups:
+      - [node1, node2]
+      - [node3, node4]
+
+  # Right side: node3 writes VALUE_X at t=5s
+  - at: 5s
+    action: write
+    key: causality_key
+    value: VALUE_X
+    target: group2
+    groups:
+      - [node1, node2]
+      - [node3, node4]
+
+  # Left side: node1 writes VALUE_B at t=6s (overwrites VALUE_A locally)
+  - at: 6s
+    action: write
+    key: causality_key
+    value: VALUE_B
+    target: group1
+    groups:
+      - [node1, node2]
+      - [node3, node4]
+
+  # Right side: node3 writes VALUE_Y at t=6s (overwrites VALUE_X locally)
+  - at: 6s
+    action: write
+    key: causality_key
+    value: VALUE_Y
+    target: group2
+    groups:
+      - [node1, node2]
+      - [node3, node4]
+
+  # Left side: node1 writes VALUE_C at t=7s (final write for node1)
+  - at: 7s
+    action: write
+    key: causality_key
+    value: VALUE_C
+    target: group1
+    groups:
+      - [node1, node2]
+      - [node3, node4]
+
+  # Right side: node3 writes VALUE_Z at t=7s (final write for node3)
+  - at: 7s
+    action: write
+    key: causality_key
+    value: VALUE_Z
+    target: group2
+    groups:
+      - [node1, node2]
+      - [node3, node4]
+
+  # Let partitions converge internally
+  - at: 10s
+    action: heal_partition
+    groups:
+      - [node1, node2]
+      - [node3, node4]
+
+  # Metrics will observe convergence through final window (~25s after heal)
+
+expected_outcome: |
+  Expected final state:
+  - All nodes should have the value with the HIGHEST timestamp (t≈7s)
+  - This is either VALUE_C (node1) or VALUE_Z (node3)
+  - Tie-breaker: lexicographically higher node ID
+  
+  Bug detection:
+  - If ANY node has VALUE_A, VALUE_B, VALUE_X, or VALUE_Y at t=30s → bug
+    (old values should NOT resurface)
+  - If nodes converge to different values → split brain
+  
+  This validates:
+  ✓ Each write creates new Timestamp
+  ✓ Higher timestamp replaces lower
+  ✓ Intermediate values don't persist
+  ✓ Causal ordering is preserved
+
+validation:
+  check_all_nodes_identical: true
+  check_value_is_latest: true
+  check_not_intermediate: true
+  expected_value_pattern: VALUE_[CZ]  # Should be one of these (latest)

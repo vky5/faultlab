@@ -5,6 +5,7 @@ package node
 import (
 	"context"
 
+	"strings"
 	"github.com/vky5/faultlab/internal/node/exec"
 	"github.com/vky5/faultlab/internal/protocol"
 	"google.golang.org/grpc"
@@ -83,10 +84,19 @@ func (n *NodeRPCServer) SendEnvelope(
 	}
 
 	if req == nil {
-		return &protocol.EnvelopeAck{
-			Success: false,
-			Message: "nil envelope",
-		}, nil
+		return &protocol.EnvelopeAck{Success: false, Message: "nil envelope"}, nil
+	}
+
+	// Extract peerID from From field (which is nodeID@addr:port)
+	sender := req.From
+	if idx := strings.Index(sender, "@"); idx != -1 {
+		sender = sender[:idx]
+	}
+
+	if d := n.nc.BeforeReceive(sender); !d.Allow {
+		// Log silently or return error? 
+		// For partitions, usually we just drop and let the sender timeout.
+		return nil, status.Error(codes.Unavailable, "partitioned")
 	}
 
 	n.nc.HandleEnvelope(req) // func in runtime

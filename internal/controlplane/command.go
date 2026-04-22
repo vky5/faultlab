@@ -26,6 +26,8 @@ const (
 	CmdMetricsStop
 	CmdMetricsWatchKey
 	CmdMetricsShow
+	CmdMetricsHistory
+	CmdLogLifecycleEvent
 	CmdHelp
 )
 
@@ -55,6 +57,7 @@ type Command struct {
 	CPHost      string
 	CPPort      int
 	IntervalMs  int
+	EventType   string // for lifecycle logging
 	replyCh     chan CommandResult
 }
 

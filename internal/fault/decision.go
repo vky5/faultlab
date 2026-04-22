@@ -24,6 +24,23 @@ func (e *Engine) BeforeSend(peer string) exec.SendDecision {
 	return exec.SendDecision{Allow: true, Delay: e.GetDelay(), Reason: "allowed"}
 }
 
+// BeforeReceive determines if incoming traffic from a peer should be accepted.
+func (e *Engine) BeforeReceive(peer string) exec.ReceiveDecision {
+	if e == nil {
+		return exec.ReceiveDecision{Allow: true, Reason: "no-fault-engine"}
+	}
+
+	if e.IsCrashed() {
+		return exec.ReceiveDecision{Allow: false, Reason: "crashed"}
+	}
+
+	if e.IsPartitioned(peer) {
+		return exec.ReceiveDecision{Allow: false, Reason: "partitioned"}
+	}
+
+	return exec.ReceiveDecision{Allow: true, Reason: "allowed"}
+}
+
 // BeforeProbe determines if probe traffic to a peer should proceed.
 func (e *Engine) BeforeProbe(peer string) exec.ProbeDecision {
 	if e == nil {

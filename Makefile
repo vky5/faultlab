@@ -8,6 +8,15 @@ CONFIG_FILE := node.runtime.ini
 Frontend_DIR := ./frontend
 PROTO_DIR := internal/protocol
 
+# Build binaries
+build: bin/node bin/controlplane
+
+bin/node:
+	go build -o bin/node ./cmd/node/main.go
+
+bin/controlplane:
+	go build -o bin/controlplane ./cmd/controlplane/main.go
+
 # Start control plane
 controlplane:
 	$(CP_CMD) -port 9000
@@ -133,10 +142,7 @@ cluster:
 
 # Stop all cluster processes
 stop:
-	@echo "Stopping all cluster processes..."
-	pkill -f "go run ./cmd/controlplane" || true
-	pkill -f "go run ./cmd/node" || true
-	@echo "Cluster stopped."
+	@./scripts/stop.sh
 
 # Test: Start controlplane + nodes, show ping logs
 test-nodes:

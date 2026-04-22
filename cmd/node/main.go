@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/vky5/faultlab/internal/fault"
 	"github.com/vky5/faultlab/internal/node"
@@ -76,6 +80,16 @@ func main() {
 	)
 
 	runtime := noderuntime.New(cfg, cpSession, nodeSession, runtimeCfg)
+
+	// Handle graceful shutdown on Ctrl+C
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		<-ctx.Done()
+		log.Printf("node %s received shutdown signal", cfg.ID)
+		runtime.Stop()
+	}()
 
 	runtime.Start(fe)
 }

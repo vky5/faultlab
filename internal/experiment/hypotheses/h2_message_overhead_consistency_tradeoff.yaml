@@ -1,0 +1,66 @@
+name: H2_message_overhead_consistency_tradeoff
+hypothesis: "Reducing gossip interval increases message overhead but decreases average staleness proportionally - a linear trade-off exists between communication cost and consistency."
+
+description: |
+  This hypothesis explores the trade-off between gossip frequency and data staleness.
+  We measure how varying the gossip interval affects:
+  1. Total messages exchanged per second
+  2. Average time a write takes to propagate to all nodes
+  3. Maximum observed staleness for any node
+
+  The hypothesis predicts that halving the gossip interval will approximately halve the staleness
+  but double the message overhead.
+
+variables:
+  gossip_intervals: [1, 3, 5, 10]  # ticks between gossip rounds
+  write_interval: 2s
+  observation_window: 60s
+  cluster_size: 5
+
+cluster:
+  id: h2_cluster
+  members:
+    - id: node1
+      port: 7201
+    - id: node2
+      port: 7202
+    - id: node3
+      port: 7203
+    - id: node4
+      port: 7204
+    - id: node5
+      port: 7205
+
+timeline:
+  - at: 0s
+    action: start_cluster
+
+  - at: 5s
+    action: start_metrics_collection
+    duration: 60s
+    metrics:
+      - message_count
+      - staleness
+      - convergence_time
+
+  - at: 5s
+    action: start_continuous_writes
+    key: counter
+    interval: 2s
+    targets:
+      - node1
+      - node2
+      - node3
+      - node4
+      - node5
+
+expected_outcome: |
+  For each gossip interval configuration:
+  - Record total messages sent
+  - Calculate average staleness across all nodes
+  - Measure time for writes to propagate to 90% and 100% of nodes
+
+validation:
+  measure_message_overhead: true
+  measure_staleness_distribution: true
+  measure_propagation_time: true

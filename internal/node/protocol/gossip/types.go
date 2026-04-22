@@ -8,17 +8,34 @@ const (
 )
 
 type Value struct {
-	Data    string
-	Version int64
-	NodeID  string
+	Data        string           `json:"data"`
+	Version     int64            `json:"version"`
+	Origin      string           `json:"origin"`
+	Timestamp   int64            `json:"timestamp"`
+	VectorClock map[string]int64 `json:"vector_clock"`
+}
+
+const (
+	TimelineEventWrite         = "WRITE"
+	TimelineEventGossipReceive = "GOSSIP_RECEIVE"
+	TimelineEventResolve       = "RESOLVE"
+)
+
+// DigestEntry is the compact metadata summary for one key.
+// It intentionally excludes full Data to keep DIGEST lightweight.
+type DigestEntry struct {
+	Version     int64            `json:"version"`
+	Origin      string           `json:"origin"`
+	Timestamp   int64            `json:"timestamp"`
+	VectorClock map[string]int64 `json:"vector_clock"`
 }
 
 // Envelope for gossip messages
 type GossipMessage struct {
 	Type MessageType `json:"type"`
 
-	Digest map[string]int64 `json:"digest,omitempty"`
-	State  map[string]Value `json:"state,omitempty"`
+	Digest map[string]DigestEntry `json:"digest,omitempty"`
+	State  map[string]Value       `json:"state,omitempty"`
 }
 
 /*
@@ -33,14 +50,14 @@ B → A : STATE (what A needs)
 
 
 ! this is what we are gonna implement, PUSH BASED GOSSIP PROTOCOL for now
-* State = actual data
-* Digest = key and version of the data
+* State = actual data + metadata
+* Digest = key + compact metadata summary
 
 Digest example:
-"a" → 5
-"b" → 2
+"a" → {version: 5, origin: "nodeA", timestamp: 1712831204000}
+"b" → {version: 2, origin: "nodeB", timestamp: 1712831181000}
 
-I have a key a at version 5, key b at version 2
+I have key a at version 5 written by nodeA at t1, key b at version 2 written by nodeB at t0.
 
 Need of digest?
 Sending full data every time is stupid
@@ -49,9 +66,15 @@ Sending full data every time is stupid
 - slow
 
 State example:
-"a" → {Data: "hello", Version: 5}
-"b" → {Data: "world", Version: 2}
+"a" → {Data: "hello", Version: 5, Origin: "nodeA", Timestamp: 1712831204000}
+"b" → {Data: "world", Version: 2, Origin: "nodeB", Timestamp: 1712831181000}
 it contains the actual data and its version, so that the receiver can compare it with its own version and decide whether to update or not.
+
+? LWW order we use for comparison:
+* Higher Timestamp wins.
+* If Timestamp ties, lexicographically higher Origin wins.
+* If Origin ties too, higher Version wins.
+* If all tie, values are considered equivalent for merge ordering.
 
 
 How it works??

@@ -1,0 +1,118 @@
+name: H6_scalability_convergence
+hypothesis: "Gossip convergence time scales logarithmically with cluster size - doubling nodes increases convergence time by a constant factor, not linearly."
+
+description: |
+  This hypothesis tests the scalability of the gossip protocol.
+  In epidemic-style gossip, information spreads exponentially:
+  - Round 1: 1 node knows -> tells 1 peer = 2 nodes
+  - Round 2: 2 nodes -> tell 2 peers = 4 nodes
+  - Round 3: 4 nodes -> tell 4 peers = 8 nodes
+
+  We test with varying cluster sizes:
+  - 3 nodes (small)
+  - 5 nodes (medium)
+  - 10 nodes (large)
+
+  For each size, we measure time for a single write to propagate to all nodes.
+
+variables:
+  cluster_sizes: [3, 5, 10]
+  gossip_interval: 3  # ticks
+  writes_per_test: 5
+  convergence_threshold: 100%  # all nodes must have value
+
+cluster_small:
+  id: h6_cluster_small
+  members:
+    - id: node1
+      port: 7601
+    - id: node2
+      port: 7602
+    - id: node3
+      port: 7603
+
+cluster_medium:
+  id: h6_cluster_medium
+  members:
+    - id: node1
+      port: 7601
+    - id: node2
+      port: 7602
+    - id: node3
+      port: 7603
+    - id: node4
+      port: 7604
+    - id: node5
+      port: 7605
+
+cluster_large:
+  id: h6_cluster_large
+  members:
+    - id: node1
+      port: 7601
+    - id: node2
+      port: 7602
+    - id: node3
+      port: 7603
+    - id: node4
+      port: 7604
+    - id: node5
+      port: 7605
+    - id: node6
+      port: 7606
+    - id: node7
+      port: 7607
+    - id: node8
+      port: 7608
+    - id: node9
+      port: 7609
+    - id: node10
+      port: 7610
+
+timeline:
+  - at: 0s
+    action: start_cluster
+    cluster: medium
+
+  - at: 5s
+    action: write
+    key: scale_test
+    value: node1_write
+    target: node1
+    groups:
+      - [node1, node2, node3, node4, node5]
+
+  - at: 5s
+    action: start_metrics_collection
+    duration: 30s
+    metrics:
+      - convergence_time
+      - propagation_rounds
+      - nodes_reached_per_round
+
+  - at: 20s
+    action: write
+    key: scale_test_2
+    value: node3_write
+    target: node3
+    groups:
+      - [node1, node2, node3, node4, node5]
+
+  - at: 35s
+    action: stop_cluster
+
+expected_outcome: |
+  For 5-node cluster:
+  - A single write should reach 90% of nodes within 2-3 gossip rounds
+  - Full convergence should occur within 4-5 rounds
+  - Expected time: 2-3 rounds × 3s = 6-9s for 90%, ~12-15s for full
+
+  The scaling should follow: convergence_time ≈ log2(n) × gossip_interval
+  - 3 nodes: ~6-9s
+  - 5 nodes: ~9-12s
+  - 10 nodes: ~12-15s
+
+validation:
+  check_90%_convergence_time_max: 12s
+  check_100%_convergence_time_max: 18s
+  check_logarithmic_scaling: true

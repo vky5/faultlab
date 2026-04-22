@@ -49,17 +49,17 @@ func TestSessionManagerRecordAndCompute(t *testing.T) {
 	}
 
 	if err := mgr.RecordSnapshot("clusterA", "k", start, map[string]NodeState{
-		"nodeA": {Value: "3", Version: 1, Origin: "nodeA", HasMetadata: true},
-		"nodeB": {Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
-		"nodeC": {Value: "3", Version: 1, Origin: "nodeA", HasMetadata: true},
+		"nodeA": {Exists: true, Value: "3", Version: 1, Origin: "nodeA", HasMetadata: true},
+		"nodeB": {Exists: true, Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
+		"nodeC": {Exists: true, Value: "3", Version: 1, Origin: "nodeA", HasMetadata: true},
 	}); err != nil {
 		t.Fatalf("record snapshot 1: %v", err)
 	}
 
 	if err := mgr.RecordSnapshot("clusterA", "k", start.Add(5*time.Second), map[string]NodeState{
-		"nodeA": {Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
-		"nodeB": {Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
-		"nodeC": {Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
+		"nodeA": {Exists: true, Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
+		"nodeB": {Exists: true, Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
+		"nodeC": {Exists: true, Value: "3", Version: 2, Origin: "nodeB", HasMetadata: true},
 	}); err != nil {
 		t.Fatalf("record snapshot 2: %v", err)
 	}
@@ -85,5 +85,43 @@ func TestSessionManagerRecordAndCompute(t *testing.T) {
 	}
 	if len(all) != 1 {
 		t.Fatalf("unexpected result count: %d", len(all))
+	}
+}
+
+func TestSessionManagerTimeline(t *testing.T) {
+	mgr := NewSessionManager()
+	start := time.Unix(300, 0)
+	mgr.Start("clusterT", start)
+
+	// Simulation: node1 writes A, then node2 receives it
+	mgr.RecordTimelineEvent("clusterT", "k1", start.Add(1*time.Second), TimelineEvent{
+		NodeID: "node1", Key: "k1", Value: "A", Version: 1, Origin: "node1", EventType: "WRITE",
+	})
+	mgr.RecordTimelineEvent("clusterT", "k1", start.Add(2*time.Second), TimelineEvent{
+		NodeID: "node2", Key: "k1", Value: "A", Version: 1, Origin: "node1", EventType: "GOSSIP_RECEIVE",
+	})
+
+	res, _ := mgr.ComputeKeyResult("clusterT", "k1")
+
+	if len(res.Timeline) != 2 {
+		t.Fatalf("expected 2 timeline events, got %d", len(res.Timeline))
+	}
+
+	// Check convergence curve:
+	// t=1: 1 distinct value (node1 has A, node2 has nothing)
+	// t=2: 1 distinct value (node1 has A, node2 has A)
+	if len(res.ConvergenceCurve) != 2 {
+		t.Fatalf("expected convergence curve length 2, got %d", len(res.ConvergenceCurve))
+	}
+	
+	// node1 writes B (conflict)
+	mgr.RecordTimelineEvent("clusterT", "k1", start.Add(3*time.Second), TimelineEvent{
+		NodeID: "node1", Key: "k1", Value: "B", Version: 2, Origin: "node1", EventType: "WRITE",
+	})
+	
+	res, _ = mgr.ComputeKeyResult("clusterT", "k1")
+	// t=3: 2 distinct values (node1 has B, node2 has A)
+	if res.ConvergenceCurve[2].Divergence != 2 {
+		t.Fatalf("expected divergence 2 at t=3, got %d", res.ConvergenceCurve[2].Divergence)
 	}
 }

@@ -1,0 +1,111 @@
+name: H4_conflict_resolution_lww
+hypothesis: "Last-Writer-Wins (LWW) conflict resolution produces deterministic, commutative outcomes - the same set of conflicting writes always resolves to the same final value regardless of propagation order."
+
+description: |
+  This hypothesis tests the conflict resolution properties of the gossip protocol.
+  When two partitions make conflicting updates to the same key and then merge, LWW should:
+  1. Always produce the same final value for the same set of writes
+  2. Be commutative: order of applying updates doesn't matter
+  3. Be idempotent: applying updates multiple times doesn't change result
+
+  We create deterministic conflicts and verify:
+  1. Same experiment run multiple times yields identical results
+  2. Different partition sizes converge to same result
+  3. Tie-breaking (same timestamp) uses deterministic node ID comparison
+
+variables:
+  write_values: [100, 200, 300, 400, 500]
+  partition_duration: 10s
+  convergence_observation_window: 30s
+
+cluster:
+  id: h4_cluster
+  members:
+    - id: node1
+      port: 7401
+    - id: node2
+      port: 7402
+    - id: node3
+      port: 7403
+    - id: node4
+      port: 7404
+    - id: node5
+      port: 7405
+
+timeline:
+  - at: 0s
+    action: start_cluster
+
+  - at: 5s
+    action: partition
+    groups:
+      - [node1, node2, node3]
+      - [node4, node5]
+
+  - at: 6s
+    action: write
+    key: conflict_key
+    value: groupA_initial
+    target: group1
+    groups:
+      - [node1, node2, node3]
+      - [node4, node5]
+
+  - at: 8s
+    action: write
+    key: conflict_key
+    value: groupA_update
+    target: node1
+    groups:
+      - [node1, node2, node3]
+      - [node4, node5]
+
+  - at: 6s
+    action: write
+    key: conflict_key
+    value: groupB_initial
+    target: group2
+    groups:
+      - [node1, node2, node3]
+      - [node4, node5]
+
+  - at: 8s
+    action: write
+    key: conflict_key
+    value: groupB_update
+    target: node4
+    groups:
+      - [node1, node2, node3]
+      - [node4, node5]
+
+  - at: 16s
+    action: heal_partition
+    groups:
+      - [node1, node2, node3]
+      - [node4, node5]
+
+  - at: 16s
+    action: start_metrics_collection
+    duration: 30s
+    metrics:
+      - divergence
+      - version_conflicts
+      - final_value
+
+  - at: 46s
+    action: read_all
+    key: conflict_key
+
+expected_outcome: |
+  - All nodes should report identical final value for conflict_key
+  - Final value should be one of the written values (no corruption)
+  - Winner should be determined by highest timestamp (or node ID tie-breaker)
+  - No divergence should remain after convergence window
+
+validation:
+  check_all_nodes_identical: true
+  check_value_in_set:
+    - groupA_initial
+    - groupA_update
+    - groupB_initial
+    - groupB_update

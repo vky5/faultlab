@@ -343,6 +343,21 @@ func Parse(input string) (Command, error) {
 		cmd := NewCommand(CmdMetricsShow)
 		cmd.ClusterID = parts[1]
 		return cmd, nil
+
+	case "log-lifecycle":
+		// usage: log-lifecycle <cluster-id> <node-id> <type> <details>
+		if len(parts) < 5 {
+			return Command{}, fmt.Errorf("usage: log-lifecycle <cluster-id> <node-id> <type> <details>")
+		}
+		cmd := NewCommand(CmdLogLifecycleEvent)
+		cmd.ClusterID = parts[1]
+		cmd.NodeID = parts[2]
+		cmd.EventType = parts[3]
+		// Join remaining parts as details
+		cmd.Value = strings.Join(parts[4:], " ")
+		// Trim quotes if present
+		cmd.Value = strings.Trim(cmd.Value, "\"")
+		return cmd, nil
 	}
 
 	return Command{}, fmt.Errorf("unknown command")
