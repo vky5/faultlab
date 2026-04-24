@@ -3,6 +3,7 @@ TODO
 *.sh
 node_modules
 dist
+.codex/
 
 # Ignore root-level compiled binaries only
 /controlplane
