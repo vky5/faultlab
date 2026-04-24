@@ -14,6 +14,9 @@ const (
 
 func (g *GossipProtocol) logGossipf(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
+	if err := appendGossipFileLog(msg); err != nil {
+		log.Printf("[gossip] file log failed: %v", err)
+	}
 	log.Printf(gossipColorCyan+"[gossip] %s"+gossipColorReset, msg)
 	if g.logger != nil {
 		if l, ok := g.logger.(interface{ Printf(string, ...any) }); ok {
@@ -25,6 +28,9 @@ func (g *GossipProtocol) logGossipf(format string, args ...any) {
 func (g *GossipProtocol) emitTimelineEvent(eventType, key, value string, version int64, origin, source string, ts int64) {
 	// Format: TL_EVENT:<TYPE>|<KEY>|<VALUE>|<VERSION>|<ORIGIN>|<SOURCE>|<ROUND>|<TIMESTAMP>
 	msg := fmt.Sprintf("TL_EVENT:%s|%s|%s|%d|%s|%s|%d|%d", eventType, key, value, version, origin, source, g.tick, ts)
+	if err := appendGossipFileLog(msg); err != nil {
+		log.Printf("[gossip] file log failed: %v", err)
+	}
 	if g.logger != nil {
 		if l, ok := g.logger.(interface{ Printf(string, ...any) }); ok {
 			l.Printf(msg)

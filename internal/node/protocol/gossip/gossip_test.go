@@ -1,6 +1,24 @@
 package gossip
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestMain(m *testing.M) {
+	logDir, err := os.MkdirTemp("", "faultlab-gossip-logs-*")
+	if err == nil {
+		_ = os.Setenv(gossipLogDirEnv, logDir)
+	}
+	code := m.Run()
+	if logDir != "" {
+		_ = os.RemoveAll(logDir)
+	}
+	os.Exit(code)
+}
 
 func TestVectorClockCompare(t *testing.T) {
 	tests := []struct {
@@ -51,6 +69,24 @@ func TestVectorClockCompare(t *testing.T) {
 				t.Fatalf("vectorClockCompare(%v, %v) = %d, want %d", tt.vc1, tt.vc2, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestAppendGossipFileLogWritesDateNamedFile(t *testing.T) {
+	logDir := t.TempDir()
+	t.Setenv(gossipLogDirEnv, logDir)
+
+	if err := appendGossipFileLog("hello from gossip"); err != nil {
+		t.Fatalf("appendGossipFileLog() error = %v", err)
+	}
+
+	logPath := filepath.Join(logDir, "gossip-"+time.Now().Format("2006-01-02")+".log")
+	contents, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("expected gossip log file %s: %v", logPath, err)
+	}
+	if !strings.Contains(string(contents), "[gossip] hello from gossip") {
+		t.Fatalf("expected log contents to contain message, got %q", string(contents))
 	}
 }
 
