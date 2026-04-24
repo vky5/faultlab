@@ -45,7 +45,8 @@ return incoming.Version > local.Version
 ```
 
 Reference:
-- `internal/node/protocol/gossip/gossip.go:493`
+- Conflict decision logic: internal/node/protocol/gossip/conflict_resolution.go
+- Digest comparison usage: internal/node/protocol/gossip/propagation.go
 
 ## Why This Order
 
@@ -53,6 +54,8 @@ Reference:
 - `Timestamp` is only used when the writes are concurrent
 - `Origin` gives a deterministic winner if timestamps tie
 - `Version` is the last fallback
+
+Note: write timestamps are protocol logical ticks (not wall-clock milliseconds). This removes cross-node clock-skew bias in concurrent conflict decisions.
 
 So this is not pure LWW. It is:
 
@@ -73,7 +76,7 @@ if localVal, ok := g.store[k]; !ok || isIncomingNewer(localVal, v) {
 ```
 
 Reference:
-- `internal/node/protocol/gossip/gossip.go:310`
+- internal/node/protocol/gossip/conflict_resolution.go
 
 ### 2. During `DIGEST` Comparison
 
@@ -91,7 +94,7 @@ for key, remoteEntry := range msg.Digest {
 If `behind` becomes `true`, the node sends its own digest back to trigger reverse sync.
 
 Reference:
-- `internal/node/protocol/gossip/gossip.go:225`
+- internal/node/protocol/gossip/propagation.go
 
 ## Example 1: No Tie-Break Needed
 
@@ -128,3 +131,19 @@ It works like this:
 5. that causes A to send `STATE`
 
 So conflict resolution chooses the winner, and the digest/state exchange moves that winner across replicas.
+
+## File Separation
+
+Gossip internals are now split by responsibility:
+
+- internal/node/protocol/gossip/propagation.go
+    - digest and state exchange flow
+    - peer selection and sender parsing
+    - digest-side metadata comparison for sync direction
+- internal/node/protocol/gossip/conflict_resolution.go
+    - state merge behavior
+    - vector clock comparison and causal ordering
+    - LWW tie-break fallback rules
+- internal/node/protocol/gossip/crud.go
+    - local Put/Get/Delete APIs
+    - vector clock increment on local write

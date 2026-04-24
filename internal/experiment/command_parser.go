@@ -49,20 +49,36 @@ func (s TimelineStep) compileCommands(clusterID, cpHost string, cpPort int, clus
 	switch strings.TrimSpace(s.Action) {
 	case "start_cluster":
 		return compileStartClusterCommands(clusterID, cpHost, cpPort, clusterCfg), nil
+	case "start_metrics_collection":
+		return []string{fmt.Sprintf("metrics-start %s", clusterID)}, nil
 	case "partition":
 		cmds, err := compilePartitionCommands(clusterID, s.Groups, true, clusterCfg)
-		if err != nil { return nil, err }
-		return append([]string{fmt.Sprintf("log-lifecycle %s SYSTEM PARTITION \"Splitting cluster into %d partitions\"", clusterID, len(s.Groups))}, cmds...), nil
-	case "heal_partition":
-		cmds, err := compilePartitionCommands(clusterID, s.Groups, false, clusterCfg)
-		if err != nil { return nil, err }
-		return append([]string{fmt.Sprintf("log-lifecycle %s SYSTEM HEAL \"Healing all network partitions\"", clusterID)}, cmds...), nil
-	case "write":
-		nodeID, err := resolveTargetGroupLeader(s.Target, s.Groups, clusterCfg)
 		if err != nil {
 			return nil, err
 		}
-		return []string{fmt.Sprintf("kv-put %s %s %s %s", clusterID, nodeID, s.Key, s.Value)}, nil
+		return append([]string{fmt.Sprintf("log-lifecycle %s SYSTEM PARTITION \"Splitting cluster into %d partitions\"", clusterID, len(s.Groups))}, cmds...), nil
+	case "heal_partition":
+		cmds, err := compilePartitionCommands(clusterID, s.Groups, false, clusterCfg)
+		if err != nil {
+			return nil, err
+		}
+		return append([]string{fmt.Sprintf("log-lifecycle %s SYSTEM HEAL \"Healing all network partitions\"", clusterID)}, cmds...), nil
+	case "write":
+		nodeIDs, err := resolveWriteTargets(s.Target, s.Groups, clusterCfg)
+		if err != nil {
+			return nil, err
+		}
+		commands := make([]string, 0, len(nodeIDs))
+		for _, nodeID := range nodeIDs {
+			commands = append(commands, fmt.Sprintf("kv-put %s %s %s %s", clusterID, nodeID, s.Key, s.Value))
+		}
+		return commands, nil
+	case "read_all":
+		commands := make([]string, 0, len(clusterCfg.Members))
+		for _, member := range clusterCfg.Members {
+			commands = append(commands, fmt.Sprintf("kv-get %s %s %s", clusterID, member.ID, s.Key))
+		}
+		return commands, nil
 	default:
 		return nil, fmt.Errorf("unknown action %q", s.Action)
 	}
@@ -126,6 +142,40 @@ func compilePartitionCommands(clusterID string, groups [][]string, enabled bool,
 	}
 
 	return commands, nil
+}
+
+func resolveWriteTargets(target string, groups [][]string, clusterCfg ClusterConfig) ([]string, error) {
+	trimmed := strings.TrimSpace(target)
+	if trimmed == "" {
+		return nil, fmt.Errorf("target is required")
+	}
+
+	lower := strings.ToLower(trimmed)
+	if lower == "all" {
+		if len(clusterCfg.Members) == 0 {
+			return nil, fmt.Errorf("target %q requires cluster.members", target)
+		}
+		nodes := make([]string, 0, len(clusterCfg.Members))
+		for _, member := range clusterCfg.Members {
+			nodes = append(nodes, member.ID)
+		}
+		return nodes, nil
+	}
+
+	if strings.HasPrefix(lower, "group") {
+		nodeID, err := resolveTargetGroupLeader(trimmed, groups, clusterCfg)
+		if err != nil {
+			return nil, err
+		}
+		return []string{nodeID}, nil
+	}
+
+	nodeID, err := resolveGroupNodeID(trimmed, clusterCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return []string{nodeID}, nil
 }
 
 func resolveTargetGroupLeader(target string, groups [][]string, clusterCfg ClusterConfig) (string, error) {

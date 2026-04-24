@@ -98,6 +98,19 @@ This document provides quick visual reference for FaultLab's logical and physica
 ## Layer 2: Protocol & Communication Layer
 
 ```
+
+### Gossip Implementation Boundaries
+
+Within the gossip protocol implementation, concerns are split into dedicated files:
+
+- internal/node/protocol/gossip/gossip.go
+    - protocol core wiring, lifecycle, peer list setup, logger hooks
+- internal/node/protocol/gossip/propagation.go
+    - tick-driven digest emission, inbound message routing, digest/state propagation
+- internal/node/protocol/gossip/conflict_resolution.go
+    - vector-clock-first conflict resolution and state merge semantics
+- internal/node/protocol/gossip/crud.go
+    - local key-value APIs (put/get/delete) and write-side metadata updates
 ┌─────────────────────────────────────────────────────────────────────┐
 │  PROTOCOL & COMMUNICATION LAYER (Node Processes)                   │
 │                                                                       │

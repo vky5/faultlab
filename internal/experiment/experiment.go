@@ -170,6 +170,8 @@ func (s TimelineStep) Validate() error {
 	switch strings.TrimSpace(s.Action) {
 	case "start_cluster":
 		return nil
+	case "start_metrics_collection":
+		return nil
 	case "partition", "heal_partition":
 		if len(s.Groups) < 2 {
 			return fmt.Errorf("action %q requires at least two groups", s.Action)
@@ -195,8 +197,14 @@ func (s TimelineStep) Validate() error {
 		if strings.TrimSpace(s.Target) == "" {
 			return fmt.Errorf("action %q requires target", s.Action)
 		}
-		if len(s.Groups) == 0 {
+		target := strings.ToLower(strings.TrimSpace(s.Target))
+		if strings.HasPrefix(target, "group") && len(s.Groups) == 0 {
 			return fmt.Errorf("action %q requires groups", s.Action)
+		}
+		return nil
+	case "read_all":
+		if strings.TrimSpace(s.Key) == "" {
+			return fmt.Errorf("action %q requires key", s.Action)
 		}
 		return nil
 	default:
