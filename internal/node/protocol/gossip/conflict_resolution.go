@@ -6,10 +6,14 @@ import "github.com/vky5/faultlab/internal/node/protocol"
 func (g *GossipProtocol) handleState(msg GossipMessage) []protocol.Envelope {
 	updated := 0
 	for k, v := range msg.State {
-		if localVal, ok := g.store[k]; !ok || isIncomingNewer(localVal, v) {
+		localVal, exists := g.store[k]
+		if !exists || isIncomingNewer(localVal, v) {
 			eventType := TimelineEventGossipReceive
-			if ok {
+			if exists {
 				eventType = TimelineEventResolve
+				g.logGossipf("RESOLVING conflict for key %s: local=(%s, v=%d, o=%s, ts=%d) incoming=(%s, v=%d, o=%s, ts=%d)",
+					k, localVal.Data, localVal.Version, localVal.Origin, localVal.Timestamp,
+					v.Data, v.Version, v.Origin, v.Timestamp)
 			}
 
 			mergedVC := make(map[string]int64)
@@ -31,6 +35,8 @@ func (g *GossipProtocol) handleState(msg GossipMessage) []protocol.Envelope {
 			g.store[k] = storedValue
 			updated++
 			g.emitTimelineEvent(eventType, k, v.Data, v.Version, v.Origin, msg.State[k].Origin, v.Timestamp)
+		} else {
+			g.logGossipf("REJECTING incoming value for key %s: incoming is older or equal", k)
 		}
 	}
 	g.logGossipf("applied STATE update: %d/%d keys changed", updated, len(msg.State))
@@ -86,6 +92,7 @@ func isIncomingNewer(local, incoming Value) bool {
 		return true
 	}
 
+	// Tie-break using timestamp, then origin, then version
 	if incoming.Timestamp > local.Timestamp {
 		return true
 	}

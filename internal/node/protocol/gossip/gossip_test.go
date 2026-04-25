@@ -90,22 +90,22 @@ func TestAppendGossipFileLogWritesDateNamedFile(t *testing.T) {
 	}
 }
 
-func TestPutUsesLogicalTickTimestamp(t *testing.T) {
+func TestPutUsesWallClockTimestamp(t *testing.T) {
 	g := NewGossipProtocol()
 	if err := g.Start("node1"); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
 
-	// Advance logical time so the write timestamp reflects protocol time, not wall clock.
-	g.tick = 7
+	before := time.Now().UnixMilli()
 	g.Put("k", "v")
+	after := time.Now().UnixMilli()
 
 	stored, ok := g.store["k"]
 	if !ok {
 		t.Fatalf("expected key to exist")
 	}
-	if stored.Timestamp != 7 {
-		t.Fatalf("expected logical timestamp 7, got %d", stored.Timestamp)
+	if stored.Timestamp < before || stored.Timestamp > after {
+		t.Fatalf("expected wall-clock timestamp between %d and %d, got %d", before, after, stored.Timestamp)
 	}
 }
 

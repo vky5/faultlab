@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/vky5/faultlab/internal/node/protocol"
 )
@@ -69,7 +70,7 @@ func (g *GossipProtocol) Tick() []protocol.Envelope {
 		Kind:          protocol.KindProtocol,
 		TraceMetadata: fmt.Sprintf("GOSSIP_DIGEST:%s", keyPrefix),
 		Version:       1,
-		LogicalTick:   g.tick,
+		LogicalTick:   uint64(time.Now().UnixMilli()),
 	}
 	return []protocol.Envelope{envelope}
 }
@@ -145,7 +146,7 @@ func (g *GossipProtocol) handleDigest(from string, msg GossipMessage) []protocol
 			Kind:          protocol.KindProtocol,
 			TraceMetadata: fmt.Sprintf("GOSSIP_STATE:%s", stateMeta),
 			Version:       1,
-			LogicalTick:   g.tick,
+			LogicalTick:   uint64(time.Now().UnixMilli()),
 		})
 	}
 
@@ -178,7 +179,7 @@ func (g *GossipProtocol) handleDigest(from string, msg GossipMessage) []protocol
 			Kind:          protocol.KindProtocol,
 			TraceMetadata: fmt.Sprintf("GOSSIP_SYNC_REQ:%d_keys", len(digestMsg.Digest)),
 			Version:       1,
-			LogicalTick:   g.tick,
+			LogicalTick:   uint64(time.Now().UnixMilli()),
 		})
 	}
 

@@ -3,6 +3,7 @@ package gossip
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/vky5/faultlab/internal/node/protocol"
 )
@@ -27,7 +28,8 @@ func (g *GossipProtocol) logGossipf(format string, args ...any) {
 
 func (g *GossipProtocol) emitTimelineEvent(eventType, key, value string, version int64, origin, source string, ts int64) {
 	// Format: TL_EVENT:<TYPE>|<KEY>|<VALUE>|<VERSION>|<ORIGIN>|<SOURCE>|<ROUND>|<TIMESTAMP>
-	msg := fmt.Sprintf("TL_EVENT:%s|%s|%s|%d|%s|%s|%d|%d", eventType, key, value, version, origin, source, g.tick, ts)
+	// We use wall-clock time for <ROUND> now.
+	msg := fmt.Sprintf("TL_EVENT:%s|%s|%s|%d|%s|%s|%d|%d", eventType, key, value, version, origin, source, time.Now().UnixMilli(), ts)
 	if err := appendGossipFileLog(msg); err != nil {
 		log.Printf("[gossip] file log failed: %v", err)
 	}

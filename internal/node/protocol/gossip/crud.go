@@ -1,8 +1,10 @@
 package gossip
 
+import "time"
+
 // Put stores or updates a local value and emits a write timeline event.
 func (g *GossipProtocol) Put(key, data string) {
-	logicalTS := int64(g.tick)
+	logicalTS := time.Now().UnixMilli()
 	current, ok := g.store[key]
 
 	vc := make(map[string]int64)
