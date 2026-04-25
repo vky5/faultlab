@@ -141,6 +141,76 @@ func (s *Service) StopMetricsSessionIfActive(clusterID string) {
 	}
 }
 
+// WaitForConvergence blocks until all nodes have reached an identical state for all tracked keys, 
+// or until the timeout is reached. Returns true if convergence was reached.
+func (s *Service) WaitForConvergence(clusterID string, timeout time.Duration) bool {
+	start := time.Now()
+	for time.Since(start) < timeout {
+		converged, err := s.IsClusterConverged(clusterID)
+		if err == nil && converged {
+			return true
+		}
+		time.Sleep(1 * time.Second)
+	}
+	return false
+}
+
+// IsClusterConverged performs a point-in-time check across all nodes to see if 
+// they agree on all currently tracked keys in the active metrics session.
+func (s *Service) IsClusterConverged(clusterID string) (bool, error) {
+	session, err := s.metrics.GetSession(clusterID)
+	if err != nil {
+		return false, err
+	}
+	if len(session.TrackedKeys) == 0 {
+		return true, nil
+	}
+
+	nodes, err := s.cluster.GetNodes(clusterID)
+	if err != nil || len(nodes) == 0 {
+		return false, err
+	}
+
+	for _, key := range session.TrackedKeys {
+		var first metrics.NodeState
+		var firstSet bool
+
+		for _, n := range nodes {
+			ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+			res, found, err := s.ExecuteKVGetObserved(ctx, clusterID, n.ID, key)
+			cancel()
+
+			if err != nil {
+				return false, fmt.Errorf("convergence check failed for node %s key %s: %w", n.ID, key, err)
+			}
+
+			state := metrics.NodeState{Exists: found}
+			if found {
+				state.Value = res.Value
+				state.Version = res.Version
+				state.Origin = res.Origin
+				state.HasMetadata = res.HasMetadata
+			}
+
+			if !firstSet {
+				first = state
+				firstSet = true
+				if !state.Exists {
+					// If the first node doesn't have it, we are not converged (at least one node must have it if we are tracking it)
+					return false, nil
+				}
+				continue
+			}
+
+			if state != first {
+				return false, nil
+			}
+		}
+	}
+
+	return true, nil
+}
+
 func (s *Service) AddMetricsWatchKey(clusterID, key string) error {
 	return s.metrics.TrackKey(clusterID, key)
 }

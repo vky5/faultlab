@@ -426,7 +426,8 @@ func (a *Actor) Run() {
 
 			case CmdMetricsStart:
 				interval := time.Duration(cmd.IntervalMs) * time.Millisecond
-				if err := a.service.StartMetricsSession(cmd.ClusterID, interval); err != nil {
+				_, err := a.service.StartMetricsSessionIfInactive(cmd.ClusterID, interval)
+				if err != nil {
 					cmd.Reply(nil, err)
 					continue
 				}
@@ -768,9 +769,15 @@ func (a *Actor) executeHypothesis(name, clusterID, path string, batches []experi
 			return
 		}
 		if completed {
-			const settleWindow = 3 * time.Second
-			log.Printf("hypothesis %s applying metrics settle window %s for cluster %s", name, settleWindow, clusterID)
-			time.Sleep(settleWindow)
+			log.Printf("hypothesis %s waiting for convergence on cluster %s...", name, clusterID)
+			converged := a.service.WaitForConvergence(clusterID, 15*time.Second)
+			
+			if converged {
+				log.Printf("hypothesis %s: CONVERGENCE REACHED, finalizing metrics.", name)
+			} else {
+				log.Printf("hypothesis %s: convergence timed out, using best-effort settle window.", name)
+				time.Sleep(5 * time.Second)
+			}
 		}
 		result, err := a.service.StopMetricsSession(clusterID)
 		if err != nil {
