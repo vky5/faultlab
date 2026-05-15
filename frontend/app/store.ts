@@ -206,6 +206,7 @@ interface ClusterStore {
   localStatuses: Record<string, "active" | "crashed">;
   selectedClusterId: string | null;
   showTimers: boolean;
+  showControlPlane: boolean;
   isLiveMode: boolean; // TRUE for API, FALSE for pure browser simulation
   kvStore: Record<string, any>; // clusterId -> nodeId -> key -> value
 
@@ -279,6 +280,18 @@ interface ClusterStore {
   handleWatchKey: (clusterId: string, key: string) => Promise<void>;
   fetchMetricsSnapshot: (clusterId: string) => Promise<void>;
   handleFetchMetricsHistory: (clusterId: string) => Promise<void>;
+
+  // ---- GIF Recording ----
+  isRecording: boolean;
+  recordedFrames: string[];
+  isEncoding: boolean;
+  gifUrl: string | null;
+  startRecording: () => void;
+  stopRecording: () => void;
+  clearRecording: () => void;
+  addFrame: (frame: string) => void;
+  setEncodingStatus: (status: boolean) => void;
+  setGifUrl: (url: string | null) => void;
 }
 
 let activeEventSource: EventSource | null = null;
@@ -306,6 +319,21 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
   showMetrics: false,
   metrics: null,
   metricsHistory: [],
+
+  // ---- GIF Recording ----
+  isRecording: false,
+  recordedFrames: [],
+  isEncoding: false,
+  gifUrl: null,
+
+  startRecording: () => set({ isRecording: true, recordedFrames: [], gifUrl: null }),
+  stopRecording: () => set({ isRecording: false }),
+  clearRecording: () => set({ recordedFrames: [], gifUrl: null, isEncoding: false }),
+  addFrame: (frame) => set((state) => ({ 
+    recordedFrames: [...state.recordedFrames, frame] 
+  })),
+  setEncodingStatus: (isEncoding) => set({ isEncoding }),
+  setGifUrl: (gifUrl) => set({ gifUrl }),
 
   setLiveMode: (live) => set({ isLiveMode: live }),
   setShowMetrics: (show) => set({ showMetrics: show }),

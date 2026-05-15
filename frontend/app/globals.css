@@ -66,6 +66,7 @@
   
   /* Animation timings */
   --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-spin-slow: spin 4s linear infinite;
   --animate-glow: glow 2s ease-in-out infinite alternate;
 }
 
