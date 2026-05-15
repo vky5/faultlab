@@ -281,17 +281,14 @@ interface ClusterStore {
   fetchMetricsSnapshot: (clusterId: string) => Promise<void>;
   handleFetchMetricsHistory: (clusterId: string) => Promise<void>;
 
-  // ---- GIF Recording ----
-  isRecording: boolean;
-  recordedFrames: string[];
-  isEncoding: boolean;
-  gifUrl: string | null;
-  startRecording: () => void;
-  stopRecording: () => void;
-  clearRecording: () => void;
-  addFrame: (frame: string) => void;
-  setEncodingStatus: (status: boolean) => void;
-  setGifUrl: (url: string | null) => void;
+  handleWatchKey: (clusterId: string, key: string) => Promise<void>;
+  fetchMetricsSnapshot: (clusterId: string) => Promise<void>;
+  handleFetchMetricsHistory: (clusterId: string) => Promise<void>;
+
+  playbackTimeMs: number;
+  isPlaying: boolean;
+  setPlaybackTimeMs: (val: number | ((prev: number) => number)) => void;
+  setIsPlaying: (val: boolean) => void;
 }
 
 let activeEventSource: EventSource | null = null;
@@ -320,22 +317,11 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
   metrics: null,
   metricsHistory: [],
 
-  // ---- GIF Recording ----
-  isRecording: false,
-  recordedFrames: [],
-  isEncoding: false,
-  gifUrl: null,
+  playbackTimeMs: 0,
+  isPlaying: false,
+  setPlaybackTimeMs: (val) => set((state) => ({ playbackTimeMs: typeof val === 'function' ? val(state.playbackTimeMs) : val })),
+  setIsPlaying: (val) => set({ isPlaying: val }),
 
-  startRecording: () => set({ isRecording: true, recordedFrames: [], gifUrl: null }),
-  stopRecording: () => set({ isRecording: false }),
-  clearRecording: () => set({ recordedFrames: [], gifUrl: null, isEncoding: false }),
-  addFrame: (frame) => set((state) => ({ 
-    recordedFrames: [...state.recordedFrames, frame] 
-  })),
-  setEncodingStatus: (isEncoding) => set({ isEncoding }),
-  setGifUrl: (gifUrl) => set({ gifUrl }),
-
-  setLiveMode: (live) => set({ isLiveMode: live }),
   setShowMetrics: (show) => set({ showMetrics: show }),
 
   initSimulationData: () => {

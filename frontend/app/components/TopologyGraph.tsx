@@ -16,14 +16,10 @@ import { zoom, ZoomBehavior, zoomIdentity } from "d3-zoom";
 import { select } from "d3-selection";
 import { NodeInfo, useClusterStore } from "../store";
 import { MetricsPanel } from "./MetricsPanel";
-import { GifExportModal } from "./GifExportModal";
 import { GraphCanvas, PositionedNode } from "./topology/GraphCanvas";
-import { RecordingOverlay } from "./topology/RecordingOverlay";
 import { MessageInspector } from "./topology/MessageInspector";
 import { ZoomControls } from "./topology/ZoomControls";
 import { LegendPanel } from "./topology/LegendPanel";
-import * as htmlToImage from "html-to-image";
-import gifshot from "gifshot";
 
 interface SimNode extends SimulationNodeDatum {
   id: string;
@@ -46,20 +42,11 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
     toggleControlPlane,
     showMetrics,
     setShowMetrics,
-    isRecording,
-    recordedFrames,
-    startRecording,
-    stopRecording,
-    isEncoding,
-    setEncodingStatus,
-    setGifUrl,
-    gifUrl,
     metrics,
   } = useClusterStore();
   const [isMetricsExpanded, setIsMetricsExpanded] = useState(false);
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
   const [simNodes, setSimNodes] = useState<SimNode[]>([]);
-  const [frameCount, setFrameCount] = useState(0);
   const svgRef = useRef<SVGSVGElement>(null);
   const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 });
 
@@ -240,98 +227,8 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
       metrics.isActive ??
       (metrics.stoppedAt === "0001-01-01T00:00:00Z" || !metrics.stoppedAt);
 
-    if (isActive && !prevIsActive.current && !isRecording) {
-      startRecording();
-    } else if (!isActive && prevIsActive.current && isRecording) {
-      stopRecording();
-    }
-
     prevIsActive.current = isActive;
-  }, [metrics, isRecording, startRecording, stopRecording]);
-
-  const isRecordingRef = useRef(isRecording);
-  useEffect(() => {
-    isRecordingRef.current = isRecording;
-  }, [isRecording]);
-
-  const framesRef = useRef<string[]>([]);
-  const wasRecordingRef = useRef(false);
-
-  useEffect(() => {
-    if (isRecording) {
-      framesRef.current = [];
-      setFrameCount(0);
-      wasRecordingRef.current = true;
-
-      const captureFrame = async () => {
-        if (!containerRef.current || !isRecordingRef.current) return;
-
-        try {
-          const dataUrl = await htmlToImage.toPng(containerRef.current, {
-            backgroundColor: "#f8fafc",
-            filter: (node) => {
-              const exclusionClasses = [
-                "z-50",
-                "zoom-controls",
-                "gif-modal",
-                "recording-overlay",
-              ];
-              return !exclusionClasses.some((c) =>
-                (node as HTMLElement).classList?.contains(c)
-              );
-            },
-            pixelRatio: 1.0,
-            skipFonts: true,
-          });
-
-          if (isRecordingRef.current) {
-            framesRef.current.push(dataUrl);
-            setFrameCount((prev) => prev + 1);
-          }
-        } catch (err) {
-          console.error("Capture failed", err);
-        }
-      };
-
-      const interval = setInterval(captureFrame, 250);
-      return () => clearInterval(interval);
-    } else {
-      if (wasRecordingRef.current && framesRef.current.length > 0) {
-        const frames = [...framesRef.current];
-        framesRef.current = [];
-        setFrameCount(0);
-        useClusterStore.setState({ recordedFrames: frames });
-      }
-      wasRecordingRef.current = false;
-    }
-  }, [isRecording]);
-
-  type GifshotResult = {
-    error: boolean;
-    image: string;
-  };
-
-  useEffect(() => {
-    if (!isRecording && recordedFrames.length > 0 && !gifUrl && !isEncoding) {
-      setEncodingStatus(true);
-
-      gifshot.createGIF(
-        {
-          images: recordedFrames,
-          gifWidth: 800,
-          gifHeight: 600,
-          interval: 0.2,
-          numWorkers: 2,
-        },
-        (result: GifshotResult) => {
-          if (!result.error) {
-            setGifUrl(result.image);
-          }
-          setEncodingStatus(false);
-        }
-      );
-    }
-  }, [isRecording, recordedFrames, gifUrl, isEncoding, setEncodingStatus, setGifUrl]);
+  }, [metrics]);
 
   const positionedNodes = simNodes.map((sn) => ({
     ...sn.node,
@@ -459,8 +356,6 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
         handleDragEnd={handleDragEnd}
       />
 
-      <RecordingOverlay isRecording={isRecording} frameCount={frameCount} />
-
       <MessageInspector
         selectedMessage={selectedMessage}
         setSelectedMessageId={setSelectedMessageId}
@@ -474,12 +369,7 @@ export function TopologyGraph({ nodes }: { nodes: NodeInfo[] }) {
         showControlPlane={showControlPlane}
         showMetrics={showMetrics}
         setShowMetrics={setShowMetrics}
-        isRecording={isRecording}
-        stopRecording={stopRecording}
-        startRecording={startRecording}
       />
-
-      <GifExportModal />
 
       <LegendPanel messageCount={messages.length} isPaused={isPaused} />
 

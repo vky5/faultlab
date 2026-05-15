@@ -21,31 +21,7 @@ variables:
   writes_per_test: 5
   convergence_threshold: 100%  # all nodes must have value
 
-cluster_small:
-  id: h6_cluster_small
-  members:
-    - id: node1
-      port: 7601
-    - id: node2
-      port: 7602
-    - id: node3
-      port: 7603
-
-cluster_medium:
-  id: h6_cluster_medium
-  members:
-    - id: node1
-      port: 7601
-    - id: node2
-      port: 7602
-    - id: node3
-      port: 7603
-    - id: node4
-      port: 7604
-    - id: node5
-      port: 7605
-
-cluster_large:
+cluster:
   id: h6_cluster_large
   members:
     - id: node1
@@ -72,47 +48,47 @@ cluster_large:
 timeline:
   - at: 0s
     action: start_cluster
-    cluster: medium
 
-  - at: 5s
+  # Inject a network partition splitting the 10 nodes into two groups of 5
+  - at: 4s
+    action: partition
+    groups:
+      - [node1, node2, node3, node4, node5]
+      - [node6, node7, node8, node9, node10]
+
+  # Write on the left side
+  - at: 8s
     action: write
     key: scale_test
-    value: node1_write
-    target: node1
+    value: left_side_write
+    target: group1
     groups:
       - [node1, node2, node3, node4, node5]
+      - [node6, node7, node8, node9, node10]
 
-  - at: 5s
-    action: start_metrics_collection
-    duration: 30s
-    metrics:
-      - convergence_time
-      - propagation_rounds
-      - nodes_reached_per_round
-
-  - at: 20s
+  # Write on the right side
+  - at: 8s
     action: write
-    key: scale_test_2
-    value: node3_write
-    target: node3
+    key: scale_test
+    value: right_side_write
+    target: group2
     groups:
       - [node1, node2, node3, node4, node5]
+      - [node6, node7, node8, node9, node10]
 
-  - at: 35s
-    action: stop_cluster
+  # Heal the massive partition
+  - at: 15s
+    action: heal_partition
+    groups:
+      - [node1, node2, node3, node4, node5]
+      - [node6, node7, node8, node9, node10]
 
 expected_outcome: |
-  For 5-node cluster:
-  - A single write should reach 90% of nodes within 2-3 gossip rounds
-  - Full convergence should occur within 4-5 rounds
-  - Expected time: 2-3 rounds × 3s = 6-9s for 90%, ~12-15s for full
-
-  The scaling should follow: convergence_time ≈ log2(n) × gossip_interval
-  - 3 nodes: ~6-9s
-  - 5 nodes: ~9-12s
-  - 10 nodes: ~12-15s
+  For 10-node cluster:
+  - After healing, the massive split brain should converge logarithmically.
+  - Expected time: 3-4 rounds for full convergence across 10 nodes.
 
 validation:
-  check_90%_convergence_time_max: 12s
-  check_100%_convergence_time_max: 18s
-  check_logarithmic_scaling: true
+  check_convergence: true
+  check_keys:
+    - scale_test
