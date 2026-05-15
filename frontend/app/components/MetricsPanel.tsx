@@ -445,9 +445,41 @@ function KeyInspectorView({ snap, keyName, result, playbackTimeMs }: { snap: any
 function GlobalLabView({ events }: { events: any[] }) {
   // Filter events (all events are shown)
   const visibleEvents = events.slice().reverse(); // Newest first
+  const allKnownNodes = Array.from(new Set(events.map(e => e.NodeID).filter(n => n && n !== "SYSTEM"))).sort((a: any, b: any) => {
+    return (parseInt(a.replace(/[^\d]/g, '')) || 0) - (parseInt(b.replace(/[^\d]/g, '')) || 0);
+  }) as string[];
+  const [zoomedDiagramData, setZoomedDiagramData] = useState<{eventsUpToNow: any[], activeEvent: any} | null>(null);
 
   return (
     <div className="max-w-5xl mx-auto animate-in fade-in duration-300">
+      <AnimatePresence>
+        {zoomedDiagramData && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-8 bg-black/90 backdrop-blur-md" onClick={() => setZoomedDiagramData(null)}>
+            <motion.div 
+              initial={{scale:0.95, opacity:0}} 
+              animate={{scale:1, opacity:1}} 
+              exit={{scale:0.95, opacity:0}} 
+              onClick={e => e.stopPropagation()} 
+              className="bg-slate-900 border border-indigo-500/30 rounded-[2rem] p-10 max-w-5xl w-full flex flex-col items-center shadow-[0_0_100px_rgba(99,102,241,0.2)] relative"
+            >
+              <button onClick={() => setZoomedDiagramData(null)} className="absolute top-6 right-6 p-2 text-slate-500 hover:text-white hover:bg-white/10 rounded-full transition-colors">
+                <X className="w-6 h-6" />
+              </button>
+              
+              <div className="w-full mb-8 text-center">
+                <h3 className="text-2xl font-light text-white tracking-widest uppercase mb-2">Topology State Inspection</h3>
+                <div className="text-slate-400 font-mono text-sm">
+                  {getEventActionText(zoomedDiagramData.activeEvent.EventType, zoomedDiagramData.activeEvent.Source, zoomedDiagramData.activeEvent.Origin)} @ {(zoomedDiagramData.activeEvent.Time / 1000000).toFixed(1)}ms
+                </div>
+              </div>
+
+              <div className="w-full bg-slate-950 rounded-3xl border border-white/5 p-8 flex justify-center shadow-inner">
+                <LargeClusterDiagram eventsUpToNow={zoomedDiagramData.eventsUpToNow} activeEvent={zoomedDiagramData.activeEvent} allKnownNodes={allKnownNodes} />
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
        <div className="flex items-center justify-between mb-8">
          <h2 className="text-xl font-light text-white tracking-tight flex items-center gap-3">
            <Network className="w-6 h-6 text-indigo-400" /> Execution Narrative
@@ -536,8 +568,16 @@ function GlobalLabView({ events }: { events: any[] }) {
                      </div>
                    </div>
 
-                   <div className="shrink-0 bg-slate-950 p-2 rounded-xl border border-white/5 shadow-inner">
-                      <MiniClusterDiagram eventsUpToNow={eventsUpToThis} activeEvent={ev} />
+                   <div 
+                     className="shrink-0 bg-slate-950 p-2 rounded-xl border border-white/5 shadow-inner cursor-pointer hover:ring-2 hover:ring-indigo-500/50 hover:bg-slate-900 transition-all group/diagram"
+                     onClick={() => setZoomedDiagramData({eventsUpToNow: eventsUpToThis, activeEvent: ev})}
+                   >
+                      <div className="relative">
+                        <MiniClusterDiagram eventsUpToNow={eventsUpToThis} activeEvent={ev} allKnownNodes={allKnownNodes} />
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/diagram:opacity-100 transition-opacity bg-black/40 rounded-lg">
+                          <Maximize2 className="w-6 h-6 text-white" />
+                        </div>
+                      </div>
                    </div>
                  </div>
               </div>
@@ -582,7 +622,7 @@ function ClusterStateSummary({ eventsUpToNow }: { eventsUpToNow: any[] }) {
   );
 }
 
-function MiniClusterDiagram({ eventsUpToNow, activeEvent }: { eventsUpToNow: any[], activeEvent: any }) {
+function MiniClusterDiagram({ eventsUpToNow, activeEvent, allKnownNodes }: { eventsUpToNow: any[], activeEvent: any, allKnownNodes: string[] }) {
   let isPartitioned = false;
   const nodeValues: Record<string, string> = {};
   
@@ -601,29 +641,37 @@ function MiniClusterDiagram({ eventsUpToNow, activeEvent }: { eventsUpToNow: any
     return colors[idx % colors.length] || "#64748b";
   };
 
-  const nodes = [
-    { id: "node1", x: 40, y: 30, group: 1 },
-    { id: "node2", x: 40, y: 90, group: 1 },
-    { id: "node3", x: 160, y: 20, group: 2 },
-    { id: "node4", x: 160, y: 60, group: 2 },
-    { id: "node5", x: 160, y: 100, group: 2 },
-  ];
+  if (!allKnownNodes || allKnownNodes.length === 0) return null;
+
+  const centerX = 100;
+  const centerY = 60;
+  const radius = 40;
+  
+  const nodes = allKnownNodes.map((id, i) => {
+    const angle = (i / allKnownNodes.length) * 2 * Math.PI - Math.PI / 2; // start top
+    return { id, x: centerX + radius * Math.cos(angle), y: centerY + radius * Math.sin(angle) };
+  });
 
   return (
-    <svg width="200" height="120" className="opacity-90 hover:opacity-100 transition-opacity">
-      {/* Links inside groups */}
-      <line x1="40" y1="30" x2="40" y2="90" stroke="#334155" strokeWidth="2" />
-      <line x1="160" y1="20" x2="160" y2="60" stroke="#334155" strokeWidth="2" />
-      <line x1="160" y1="60" x2="160" y2="100" stroke="#334155" strokeWidth="2" />
-
-      {/* Cross-group links or partition line */}
-      {isPartitioned ? (
-        <line x1="100" y1="10" x2="100" y2="110" stroke="#ef4444" strokeWidth="3" strokeDasharray="4 4" className="animate-pulse" />
+    <svg width="200" height="120" className="opacity-90 hover:opacity-100 transition-opacity bg-slate-900 border border-white/5 rounded-xl shrink-0 overflow-visible">
+      {/* Edges */}
+      {!isPartitioned ? (
+        nodes.map((n1, i) => 
+          nodes.slice(i+1).map((n2, j) => (
+             <line key={`edge-${i}-${j}`} x1={n1.x} y1={n1.y} x2={n2.x} y2={n2.y} stroke="#334155" strokeWidth="1" opacity="0.3" />
+          ))
+        )
       ) : (
         <>
-          <line x1="40" y1="30" x2="160" y2="20" stroke="#334155" strokeWidth="2" opacity="0.5" />
-          <line x1="40" y1="90" x2="160" y2="60" stroke="#334155" strokeWidth="2" opacity="0.5" />
-          <line x1="40" y1="90" x2="160" y2="100" stroke="#334155" strokeWidth="2" opacity="0.5" />
+          <line x1={centerX} y1={centerY - radius - 15} x2={centerX} y2={centerY + radius + 15} stroke="#ef4444" strokeWidth="3" strokeDasharray="4 4" className="animate-pulse" />
+          {nodes.map((n1, i) => 
+            nodes.slice(i+1).map((n2, j) => {
+              if ((n1.x <= centerX && n2.x <= centerX) || (n1.x > centerX && n2.x > centerX)) {
+                return <line key={`edge-${i}-${j}`} x1={n1.x} y1={n1.y} x2={n2.x} y2={n2.y} stroke="#334155" strokeWidth="1" opacity="0.3" />;
+              }
+              return null;
+            })
+          )}
         </>
       )}
 
@@ -644,6 +692,105 @@ function MiniClusterDiagram({ eventsUpToNow, activeEvent }: { eventsUpToNow: any
             </text>
             {val && (
               <text y="-16" textAnchor="middle" fill={color} fontSize="9" fontWeight="bold">
+                {val}
+              </text>
+            )}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+function LargeClusterDiagram({ eventsUpToNow, activeEvent, allKnownNodes }: { eventsUpToNow: any[], activeEvent: any, allKnownNodes: string[] }) {
+  let isPartitioned = false;
+  const nodeValues: Record<string, string> = {};
+  
+  for (const e of eventsUpToNow) {
+    if (e.EventType === "PARTITION") isPartitioned = true;
+    if (e.EventType === "HEAL") isPartitioned = false;
+    if ((e.EventType === "WRITE" || e.EventType === "RESOLVE" || e.EventType === "GOSSIP_RECEIVE") && e.NodeID && e.key !== "SYSTEM") {
+      nodeValues[e.NodeID] = e.Value;
+    }
+  }
+
+  const uniqueVals = Array.from(new Set(Object.values(nodeValues).filter(v => v)));
+  const getColorForValue = (val: string) => {
+    const colors = ["#3b82f6", "#8b5cf6", "#f59e0b", "#ec4899", "#10b981"];
+    const idx = uniqueVals.indexOf(val);
+    return colors[idx % colors.length] || "#64748b";
+  };
+
+  if (!allKnownNodes || allKnownNodes.length === 0) return null;
+
+  const width = 800;
+  const height = 500;
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const radius = 180;
+  
+  const nodes = allKnownNodes.map((id, i) => {
+    const angle = (i / allKnownNodes.length) * 2 * Math.PI - Math.PI / 2; // start top
+    return { id, x: centerX + radius * Math.cos(angle), y: centerY + radius * Math.sin(angle) };
+  });
+
+  return (
+    <svg width={width} height={height} className="overflow-visible">
+      <defs>
+        <filter id="glow">
+          <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+          <feMerge>
+            <feMergeNode in="coloredBlur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+      </defs>
+
+      {/* Edges */}
+      {!isPartitioned ? (
+        nodes.map((n1, i) => 
+          nodes.slice(i+1).map((n2, j) => (
+             <line key={`edge-${i}-${j}`} x1={n1.x} y1={n1.y} x2={n2.x} y2={n2.y} stroke="#334155" strokeWidth="2" opacity="0.3" strokeDasharray="6 6" />
+          ))
+        )
+      ) : (
+        <>
+          <line x1={centerX} y1={centerY - radius - 40} x2={centerX} y2={centerY + radius + 40} stroke="#ef4444" strokeWidth="6" strokeDasharray="12 12" className="animate-pulse" filter="url(#glow)" />
+          {nodes.map((n1, i) => 
+            nodes.slice(i+1).map((n2, j) => {
+              // Left vs Right check
+              if ((n1.x <= centerX && n2.x <= centerX) || (n1.x > centerX && n2.x > centerX)) {
+                return <line key={`edge-${i}-${j}`} x1={n1.x} y1={n1.y} x2={n2.x} y2={n2.y} stroke="#334155" strokeWidth="2" opacity="0.3" strokeDasharray="6 6" />;
+              }
+              return null;
+            })
+          )}
+        </>
+      )}
+
+      {/* Nodes */}
+      {nodes.map(n => {
+        const val = nodeValues[n.id];
+        const color = val ? getColorForValue(val) : "#1e293b";
+        const isTarget = activeEvent?.NodeID === n.id;
+        const angle = Math.atan2(n.y - centerY, n.x - centerX);
+        const tx = Math.cos(angle) * 60;
+        const ty = Math.sin(angle) * 60;
+        let anchor = "middle";
+        if (Math.cos(angle) > 0.1) anchor = "start";
+        else if (Math.cos(angle) < -0.1) anchor = "end";
+        
+        return (
+          <g key={n.id} transform={`translate(${n.x}, ${n.y})`}>
+            {isTarget && (
+              <circle r="45" fill="none" stroke={color} strokeWidth="4" className="animate-ping opacity-60" />
+            )}
+            <circle r="36" fill={color} stroke={isTarget ? "#fff" : "#0f172a"} strokeWidth="6" filter="url(#glow)" />
+            <text y="3" textAnchor="middle" alignmentBaseline="middle" fill="#fff" fontSize="20" fontWeight="900" fontFamily="monospace">
+              {n.id.replace("node", "N")}
+            </text>
+            {val && (
+              <text x={tx} y={ty} textAnchor={anchor} alignmentBaseline="middle" fill={color} fontSize="18" fontWeight="bold" fontFamily="monospace" filter="url(#glow)">
                 {val}
               </text>
             )}
@@ -697,7 +844,12 @@ function generatePDFReport(snap: any, globalEvents: any[]) {
 
   // 2. Heatmap Data
   const heatmapRows = [];
-  const nodeValues: Record<string, string> = { node1: "", node2: "", node3: "", node4: "", node5: "" };
+  const allKnownNodes = Array.from(new Set(globalEvents.map(e => e.NodeID).filter(n => n && n !== "SYSTEM"))).sort((a: any, b: any) => {
+    return (parseInt(a.replace(/[^\d]/g, '')) || 0) - (parseInt(b.replace(/[^\d]/g, '')) || 0);
+  }) as string[];
+  const nodeValues: Record<string, string> = {};
+  allKnownNodes.forEach(n => nodeValues[n] = "");
+
   let lastTimeMs = -1;
   const chronologicalEvents = [...globalEvents].reverse();
   
@@ -717,11 +869,7 @@ function generatePDFReport(snap: any, globalEvents: any[]) {
       <thead>
         <tr>
           <th>Time</th>
-          <th>N1</th>
-          <th>N2</th>
-          <th>N3</th>
-          <th>N4</th>
-          <th>N5</th>
+          ${allKnownNodes.map(n => `<th>${n.replace("node", "N")}</th>`).join("")}
         </tr>
       </thead>
       <tbody>
@@ -734,11 +882,11 @@ function generatePDFReport(snap: any, globalEvents: any[]) {
       vals.forEach(v => counts[v] = (counts[v] || 0) + 1);
       majorityVal = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
     }
-    const isConverged = vals.length === 5 && vals.every(v => v === majorityVal);
+    const isConverged = vals.length === allKnownNodes.length && vals.every(v => v === majorityVal);
     const isSplit = new Set(vals).size > 1;
 
     heatmapHTML += `<tr><td>${row.time.toFixed(1)}ms</td>`;
-    for (const n of ["node1", "node2", "node3", "node4", "node5"]) {
+    for (const n of allKnownNodes) {
        const v = row.state[n];
        let cellClass = "empty";
        if (v) {
@@ -939,7 +1087,7 @@ function generatePDFReport(snap: any, globalEvents: any[]) {
           }
 
           const eventsUpToThis = globalEvents.filter(e => e.Time <= ev.Time);
-          const diagramHtml = generateMiniClusterSVGHTML(eventsUpToThis, ev);
+          const diagramHtml = generateMiniClusterSVGHTML(eventsUpToThis, ev, allKnownNodes);
 
           return `
             <div class="event ${ev.EventType}">
@@ -975,7 +1123,7 @@ function generatePDFReport(snap: any, globalEvents: any[]) {
   window.open(url, '_blank');
 }
 
-function generateMiniClusterSVGHTML(eventsUpToNow: any[], activeEvent: any) {
+function generateMiniClusterSVGHTML(eventsUpToNow: any[], activeEvent: any, allKnownNodes: string[]) {
   let isPartitioned = false;
   const nodeValues: Record<string, string> = {};
   
@@ -994,29 +1142,36 @@ function generateMiniClusterSVGHTML(eventsUpToNow: any[], activeEvent: any) {
     return colors[idx % colors.length] || "#64748b";
   };
 
-  const nodes = [
-    { id: "node1", x: 40, y: 30 },
-    { id: "node2", x: 40, y: 90 },
-    { id: "node3", x: 160, y: 20 },
-    { id: "node4", x: 160, y: 60 },
-    { id: "node5", x: 160, y: 100 },
-  ];
+  if (!allKnownNodes || allKnownNodes.length === 0) return "";
+
+  const centerX = 100;
+  const centerY = 60;
+  const radius = 40;
+  
+  const nodes = allKnownNodes.map((id, i) => {
+    const angle = (i / allKnownNodes.length) * 2 * Math.PI - Math.PI / 2; // start top
+    return { id, x: centerX + radius * Math.cos(angle), y: centerY + radius * Math.sin(angle) };
+  });
 
   let svgContent = `
     <svg width="200" height="120" style="background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-      <line x1="40" y1="30" x2="40" y2="90" stroke="#cbd5e1" stroke-width="2" />
-      <line x1="160" y1="20" x2="160" y2="60" stroke="#cbd5e1" stroke-width="2" />
-      <line x1="160" y1="60" x2="160" y2="100" stroke="#cbd5e1" stroke-width="2" />
   `;
 
-  if (isPartitioned) {
-    svgContent += `<line x1="100" y1="10" x2="100" y2="110" stroke="#ef4444" stroke-width="3" stroke-dasharray="4 4" />`;
+  if (!isPartitioned) {
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        svgContent += `<line x1="${nodes[i].x}" y1="${nodes[i].y}" x2="${nodes[j].x}" y2="${nodes[j].y}" stroke="#cbd5e1" stroke-width="1" opacity="0.5" />`;
+      }
+    }
   } else {
-    svgContent += `
-      <line x1="40" y1="30" x2="160" y2="20" stroke="#cbd5e1" stroke-width="2" opacity="0.5" />
-      <line x1="40" y1="90" x2="160" y2="60" stroke="#cbd5e1" stroke-width="2" opacity="0.5" />
-      <line x1="40" y1="90" x2="160" y2="100" stroke="#cbd5e1" stroke-width="2" opacity="0.5" />
-    `;
+    svgContent += `<line x1="${centerX}" y1="${centerY - radius - 15}" x2="${centerX}" y2="${centerY + radius + 15}" stroke="#ef4444" stroke-width="3" stroke-dasharray="4 4" />`;
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        if ((nodes[i].x <= centerX && nodes[j].x <= centerX) || (nodes[i].x > centerX && nodes[j].x > centerX)) {
+          svgContent += `<line x1="${nodes[i].x}" y1="${nodes[i].y}" x2="${nodes[j].x}" y2="${nodes[j].y}" stroke="#cbd5e1" stroke-width="1" opacity="0.5" />`;
+        }
+      }
+    }
   }
 
   for (const n of nodes) {
