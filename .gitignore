@@ -4,7 +4,9 @@ TODO
 node_modules
 dist
 .codex/
+bin/
 
 # Ignore root-level compiled binaries only
 /controlplane
+/cpcli
 /faultlab

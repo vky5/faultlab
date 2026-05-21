@@ -2,6 +2,10 @@
 
 FaultLab is a distributed systems fault-injection lab with a control plane, multiple nodes, and an optional frontend for cluster operations and visualization.
 
+## Demo
+
+Watch the demo video: https://www.youtube.com/watch?v=GlBehFIIKhc
+
 ## Architecture & Subsystems
 
 ```mermaid
